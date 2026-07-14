@@ -1,0 +1,3 @@
+#!/bin/sh
+
+# TODO: iirc should be a simple mount /mnt/BOOT and copy over

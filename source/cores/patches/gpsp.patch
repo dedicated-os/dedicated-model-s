@@ -1,0 +1,23 @@
+diff --git forkSrcPrefix/Makefile forkDstPrefix/Makefile
+index dc4b60dec7f70a153dbc2eb849cd5acfc90f9d4d..9e2ce790d8b8c72fd3160f8f2e8be1b9aa1d7cc1 100644
+--- forkSrcPrefix/Makefile
++++ forkDstPrefix/Makefile
+@@ -524,6 +524,18 @@ else ifeq ($(platform), miyoomini)
+ 	ARCH = arm
+ 	BUILTIN_GPU = neon
+ 
++# TRIMUI MODEL S
++else ifeq ($(platform), trimui)
++  TARGET := $(TARGET_NAME)_libretro.so
++  CC  = $(CROSS_COMPILE)gcc
++  CXX = $(CROSS_COMPILE)g++
++  AR  = $(CROSS_COMPILE)ar
++  fpic := -fPIC -DPIC
++  SHARED := -shared -nostdlib -Wl,-version-script=link.T
++  CFLAGS += -DSMALL_TRANSLATION_CACHE
++  HAVE_DYNAREC := 1
++  CPU_ARCH := arm
++  
+ # Windows
+ else
+ 	TARGET := $(TARGET_NAME)_libretro.dll
