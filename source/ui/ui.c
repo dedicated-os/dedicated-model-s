@@ -325,7 +325,10 @@ SDL_Surface			*scaler, *overlay;
 uint32_t			*debe_map, *defe_map, sleepns_mul;
 uint16_t			vbp, vt;
 
-uint32_t 			flip_offset = UINT32_MAX;
+uint32_t 			sc_flip_offset = UINT32_MAX;
+uint32_t 			ov_flip_offset = UINT32_MAX;
+int					sc_dirty = 0;
+int					ov_dirty = 0;
 float 				scale = 1.0;
 
 #define NEW_IOCTL	// Model S seems to be NEW_IOCTL
@@ -466,6 +469,14 @@ static void waitfordisplayperiod(void) {
 	}
 }
 
+
+static void dirty_scaler(void) {
+	sc_dirty = 1;
+}
+static void dirty_overlay(void) {
+	ov_dirty = 1;
+}
+
 // vsync: 0 = no wait, 1 = vsync wait, 2 = vsync & display period wait
 enum {
 	VSYNC_NONE = 0,
@@ -474,17 +485,35 @@ enum {
 	
 	VSYNC_COUNT,
 };
-static void flip_scaler(int vsync) {
-	ion_flush(scaler->pixels, scaler->pitch*scaler->h);
+static void present_layers(int vsync) {
+	// if (!sc_dirty && !ov_dirty) return;
+	
+	if (sc_dirty) {
+		ion_flush(scaler->pixels, scaler->pitch*scaler->h);
+	}
+	if (ov_dirty) {
+		ion_flush(overlay->pixels, overlay->pitch*overlay->h);
+	}
+	
 	if (vsync) waitforvsync();
-	sc_info.fb.addr[0] = (uintptr_t)sc_meminfo.padd + flip_offset;
-	defe_map[BUF_ADDR0_REG/4] = sc_info.fb.addr[0];
-	flip_offset ^= scaler->pitch*scaler->h;
-	scaler->pixels = (void*)((uintptr_t)sc_meminfo.vadd + flip_offset);
+	
+	if (sc_dirty) {
+		sc_info.fb.addr[0] = (uintptr_t)sc_meminfo.padd + sc_flip_offset;
+		defe_map[BUF_ADDR0_REG/4] = sc_info.fb.addr[0];
+		sc_flip_offset ^= scaler->pitch*scaler->h;
+		scaler->pixels = (void*)((uintptr_t)sc_meminfo.vadd + sc_flip_offset);
+		sc_dirty = 0;
+	}
+	if (ov_dirty) {
+		ov_info.fb.addr[0] = (uintptr_t)ov_meminfo.padd + ov_flip_offset;
+		uint32_t args[4] = {0, LAYER2, (uintptr_t)&ov_info, 0};
+		if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
+		ov_flip_offset ^= overlay->pitch*overlay->h;
+		overlay->pixels = (void*)((uintptr_t)ov_meminfo.vadd + ov_flip_offset);
+		ov_dirty = 0;
+	}
+	
 	if (vsync>1) waitfordisplayperiod();
-}
-static void flip_overlay(void) {
-	ion_flush(ov_meminfo.vadd, ov_meminfo.size);
 }
 
 static void setup_layers(void) {
@@ -500,13 +529,15 @@ static void setup_layers(void) {
 
 	// allocate memory for scaler/overlay layers
 	sc_meminfo.size = ((VIDEO_WIDTH*VIDEO_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
-	ov_meminfo.size = ((VIDEO_WIDTH*VIDEO_HEIGHT*4)*1 + 4095) & (~4095); // singlebuf
+	ov_meminfo.size = ((VIDEO_WIDTH*VIDEO_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
 	ion_alloc(&sc_meminfo);
 	ion_alloc(&ov_meminfo);
+	memset(ov_meminfo.vadd, 0, ov_meminfo.size);
+	ion_flush(ov_meminfo.vadd, ov_meminfo.size);
 	
 	scaler = SDL_CreateRGBSurfaceFrom(sc_meminfo.vadd + SCALER_WIDTH*SCALER_HEIGHT*4, SCALER_WIDTH, SCALER_HEIGHT,
 			32, SCALER_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
-	overlay = SDL_CreateRGBSurfaceFrom(ov_meminfo.vadd, VIDEO_WIDTH, VIDEO_HEIGHT,
+	overlay = SDL_CreateRGBSurfaceFrom(ov_meminfo.vadd + VIDEO_WIDTH*VIDEO_HEIGHT*4, VIDEO_WIDTH, VIDEO_HEIGHT,
 			32, VIDEO_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
 	
 	// setup layer for scaler: use layer 1
@@ -558,6 +589,8 @@ static void setup_layers(void) {
 	
 	args[1] = LAYER2; args[2] = (uintptr_t)&ov_info;
 	if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
+	
+	ov_flip_offset = overlay->pitch*overlay->h;
 }
 static void enable_layers(void) {
 	uint32_t args[4] = {0, LAYER1, 0, 0};
@@ -660,7 +693,7 @@ static void reinit_layer(int w, int h) {
 	sc_info.fb.src_win.height = SCALER_HEIGHT;	// source crop.h
 	if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
 
-	flip_offset = scaler->pitch*scaler->h;
+	sc_flip_offset = scaler->pitch*scaler->h;
 	
 	float scale_x = (float)VIDEO_WIDTH / SCALER_WIDTH;
 	float scale_y = (float)VIDEO_HEIGHT / SCALER_HEIGHT;
@@ -1308,11 +1341,10 @@ int main(void) {
 	
 	Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
 	Font_shadowText(overlay, font18, "Game Boy Micro", 4,4+18, WHITE_COLOR);
-	
-	// flip_overlay(); // not actually necessary, hence the tearing
+	dirty_overlay();
 	
 	SDL_FillRect(scaler, NULL, 0xff282828);
-	flip_scaler(VSYNC_WAIT);
+	dirty_scaler();
 	
 	Pad_reset();
 	int menu_combo = 0;
@@ -1357,8 +1389,8 @@ int main(void) {
 		if (Pad_justPressed(PAD_START)) quit = 1;
 		
 		// SDL_FillRect(scaler, NULL, 0xff282828);
-		// flip_scaler(VSYNC_WAIT);
-		SDL_Delay(16);
+		// dirty_scaler();
+		present_layers(VSYNC_WAIT);
 	}
 	
 	Fonts_quit();
