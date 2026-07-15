@@ -8,7 +8,7 @@ OUTPUT=build/$(TARGET)
 ARCH = -marm -mtune=arm926ej-s -march=armv5te
 CC 	= $(CROSS_COMPILE)gcc
 SRC = ui.c
-CFLAGS = -Ofast $(ARCH) -flto -Wall -ffunction-sections -fdata-sections -Wall
+CFLAGS = -Ofast $(ARCH) -flto -Wall -ffunction-sections -fdata-sections -Wall -Wno-unused-function
 CFLAGS += -I./libretro-common/include/
 LDFLAGS = -ldl -lm -lSDL -lSDL_image -lSDL_ttf -ltinyalsa -Wl,--gc-sections -s
 
