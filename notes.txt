@@ -1,0 +1,3 @@
+I think font-dedicated-6 (5px tall) is going to be too small on the model S
+	11's 9px is already pushing it
+	mostly because of it's single pixel stroke width...
