@@ -280,14 +280,14 @@ static void Settings_setBrightness(int value) {
 // IPU (courtesy of eggs)
 // --------------------------------------------
 
-#define	VIDEO_WIDTH		(320)
-#define	VIDEO_HEIGHT	(240)
+#define	SCREEN_WIDTH		(320)
+#define	SCREEN_HEIGHT	(240)
 
-static int	SCALER_WIDTH	= VIDEO_WIDTH; // (240)
-static int	SCALER_HEIGHT	= VIDEO_HEIGHT; // (180)
+static int	SCALER_WIDTH	= SCREEN_WIDTH; // (240)
+static int	SCALER_HEIGHT	= SCREEN_HEIGHT; // (180)
 
-#define	SCALER_X 	((VIDEO_WIDTH - SCALER_WIDTH)/2)
-#define	SCALER_Y 	((VIDEO_HEIGHT - SCALER_HEIGHT)/2)
+#define	SCALER_X 	((SCREEN_WIDTH - SCALER_WIDTH)/2)
+#define	SCALER_Y 	((SCREEN_HEIGHT - SCALER_HEIGHT)/2)
 #define	SCALER_W 	(SCALER_WIDTH)
 #define	SCALER_H 	(SCALER_HEIGHT)
 
@@ -300,6 +300,12 @@ static int	SCALER_HEIGHT	= VIDEO_HEIGHT; // (180)
 #define DEBE_SIZE		(0x1000)
 #define	LAY1_ADDR_REG_L	(0x854)
 #define	LAY1_ADDR_REG_H	(0x861)
+#define	LAY2_ADDR_REG_L	(0x858)
+#define	LAY2_ADDR_REG_H	(0x862)
+#define	DEBE_ADDR(addr)	(((uint32_t)(addr) - 0x80000000) << 3)
+// Probe also showed 0x8c4 changing when layer 2 addr changed via ioctl.
+// Keep an eye on that if direct address writes do not latch reliably.
+// #define PROBE_OVERLAY_REGS
 #define	TCON			(0x01C0C000)
 #define	TIMING_REG1		(0x4C)
 #define	TIMING_REG2		(0x50)
@@ -468,6 +474,30 @@ static void waitfordisplayperiod(void) {
 		nanosleep(&sleeptime, NULL);
 	}
 }
+static void waitforvblankstart(void) {
+	struct timespec sleeptime = {0,0};
+	uint16_t *tcon_map, line;
+
+	while (1) {
+		tcon_map = (uint16_t*)mmap(0, DEBUG_INFO_REG+4, PROT_READ, MAP_PRIVATE, mem_fd, TCON);
+		line = (tcon_map[(DEBUG_INFO_REG+2)/2]) & 0x3ff;
+		munmap(tcon_map, DEBUG_INFO_REG+4);
+
+		if (line < vbp) break;
+
+		if (line < 240 + vbp) {
+			sleeptime.tv_nsec = (240 + vbp - line) * sleepns_mul;
+		}
+		else {
+			sleeptime.tv_nsec = (vt - line) * sleepns_mul;
+		}
+		nanosleep(&sleeptime, NULL);
+	}
+}
+static void waitfornextvblankstart(void) {
+	waitfordisplayperiod();
+	waitforvblankstart();
+}
 
 
 static void dirty_scaler(void) {
@@ -488,14 +518,12 @@ enum {
 static void present_layers(int vsync) {
 	// if (!sc_dirty && !ov_dirty) return;
 	
-	if (sc_dirty) {
-		ion_flush(scaler->pixels, scaler->pitch*scaler->h);
-	}
-	if (ov_dirty) {
-		ion_flush(overlay->pixels, overlay->pitch*overlay->h);
-	}
+	if (sc_dirty) ion_flush(scaler->pixels, scaler->pitch*scaler->h);
+	if (ov_dirty) ion_flush(overlay->pixels, overlay->pitch*overlay->h);
 	
-	if (vsync) waitforvsync();
+	// if (vsync) waitforvsync();
+	if (vsync) waitforvblankstart();
+	// if (vsync) waitfornextvblankstart();
 	
 	if (sc_dirty) {
 		sc_info.fb.addr[0] = (uintptr_t)sc_meminfo.padd + sc_flip_offset;
@@ -504,10 +532,11 @@ static void present_layers(int vsync) {
 		scaler->pixels = (void*)((uintptr_t)sc_meminfo.vadd + sc_flip_offset);
 		sc_dirty = 0;
 	}
+	
 	if (ov_dirty) {
 		ov_info.fb.addr[0] = (uintptr_t)ov_meminfo.padd + ov_flip_offset;
-		uint32_t args[4] = {0, LAYER2, (uintptr_t)&ov_info, 0};
-		if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
+		debe_map[LAY2_ADDR_REG_L/4] = DEBE_ADDR(ov_info.fb.addr[0]);
+		// debe_map[0x8c4/4] = 0x40;
 		ov_flip_offset ^= overlay->pitch*overlay->h;
 		overlay->pixels = (void*)((uintptr_t)ov_meminfo.vadd + ov_flip_offset);
 		ov_dirty = 0;
@@ -515,6 +544,39 @@ static void present_layers(int vsync) {
 	
 	if (vsync>1) waitfordisplayperiod();
 }
+
+#ifdef PROBE_OVERLAY_REGS
+static void probe_overlay_regs(void) {
+	uint32_t before[DEBE_SIZE / 4];
+	uint32_t after[DEBE_SIZE / 4];
+	uint8_t* before8 = (uint8_t*)before;
+	uint8_t* after8 = (uint8_t*)after;
+	uint32_t original = ov_info.fb.addr[0];
+	uint32_t probe = (uintptr_t)ov_meminfo.padd + ov_flip_offset;
+	uint32_t args[4] = {0, LAYER2, (uintptr_t)&ov_info, 0};
+	
+	LOG("probe overlay addr: 0x%08x -> 0x%08x", original, probe);
+	memcpy(before, debe_map, sizeof(before));
+	
+	ov_info.fb.addr[0] = probe;
+	if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
+	memcpy(after, debe_map, sizeof(after));
+	
+	for (int i=0; i<DEBE_SIZE/4; i++) {
+		if (before[i]!=after[i]) {
+			LOG("DEBE word 0x%03x: 0x%08x -> 0x%08x", i*4, before[i], after[i]);
+		}
+	}
+	for (int i=0; i<DEBE_SIZE; i++) {
+		if (before8[i]!=after8[i]) {
+			LOG("DEBE byte 0x%03x: 0x%02x -> 0x%02x", i, before8[i], after8[i]);
+		}
+	}
+	
+	ov_info.fb.addr[0] = original;
+	if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
+}
+#endif
 
 static void setup_layers(void) {
 	// move FB from layer3 to layer0 (lowest priority)
@@ -528,8 +590,8 @@ static void setup_layers(void) {
 	if (ioctl(disp_fd, DISP_CMD_LAYER_ENABLE, &args)<0) fprintf(stderr, "LAYER_ENABLE failed %s\n",strerror(errno));
 
 	// allocate memory for scaler/overlay layers
-	sc_meminfo.size = ((VIDEO_WIDTH*VIDEO_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
-	ov_meminfo.size = ((VIDEO_WIDTH*VIDEO_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
+	sc_meminfo.size = ((SCREEN_WIDTH*SCREEN_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
+	ov_meminfo.size = ((SCREEN_WIDTH*SCREEN_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
 	ion_alloc(&sc_meminfo);
 	ion_alloc(&ov_meminfo);
 	memset(ov_meminfo.vadd, 0, ov_meminfo.size);
@@ -537,8 +599,8 @@ static void setup_layers(void) {
 	
 	scaler = SDL_CreateRGBSurfaceFrom(sc_meminfo.vadd + SCALER_WIDTH*SCALER_HEIGHT*4, SCALER_WIDTH, SCALER_HEIGHT,
 			32, SCALER_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
-	overlay = SDL_CreateRGBSurfaceFrom(ov_meminfo.vadd + VIDEO_WIDTH*VIDEO_HEIGHT*4, VIDEO_WIDTH, VIDEO_HEIGHT,
-			32, VIDEO_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+	overlay = SDL_CreateRGBSurfaceFrom(ov_meminfo.vadd + SCREEN_WIDTH*SCREEN_HEIGHT*4, SCREEN_WIDTH, SCREEN_HEIGHT,
+			32, SCREEN_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
 	
 	// setup layer for scaler: use layer 1
 	memset(&sc_info, 0, sizeof(sc_info));
@@ -575,17 +637,17 @@ static void setup_layers(void) {
 	ov_info.ck_enable = 0;							// colorkey
 	ov_info.screen_win.x = 0;						// frame.x
 	ov_info.screen_win.y = 0;						// frame.y
-	ov_info.screen_win.width = VIDEO_WIDTH;			// frame.w
-	ov_info.screen_win.height = VIDEO_HEIGHT;		// frame.h
+	ov_info.screen_win.width = SCREEN_WIDTH;			// frame.w
+	ov_info.screen_win.height = SCREEN_HEIGHT;		// frame.h
 	ov_info.fb.addr[0] = (uintptr_t)ov_meminfo.padd;// address[0]
-	ov_info.fb.size.width = VIDEO_WIDTH;			// framebuffer.w
-	ov_info.fb.size.height = VIDEO_HEIGHT;			// framebuffer.h
+	ov_info.fb.size.width = SCREEN_WIDTH;			// framebuffer.w
+	ov_info.fb.size.height = SCREEN_HEIGHT;			// framebuffer.h
 	ov_info.fb.format = DISP_FORMAT_ARGB_8888;		// fmt
 	ov_info.fb.pre_multiply = 0;					// pre_mult
 	ov_info.fb.src_win.x = 0;						// source crop.x
 	ov_info.fb.src_win.y = 0;						// source crop.y
-	ov_info.fb.src_win.width = VIDEO_WIDTH;			// source crop.w
-	ov_info.fb.src_win.height = VIDEO_HEIGHT;		// source crop.h
+	ov_info.fb.src_win.width = SCREEN_WIDTH;			// source crop.w
+	ov_info.fb.src_win.height = SCREEN_HEIGHT;		// source crop.h
 	
 	args[1] = LAYER2; args[2] = (uintptr_t)&ov_info;
 	if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
@@ -669,7 +731,7 @@ static inline int round_to_nearest(int value, int n) {
     return (value + n / 2) / n * n;
 }
 static void reinit_layer(int w, int h) {
-	// TODO: w,h must be <= VIDEO_*
+	// TODO: w,h must be <= SCREEN_*
 	
 	// TODO: don't resize scaler just resize scale?
 	
@@ -695,8 +757,8 @@ static void reinit_layer(int w, int h) {
 
 	sc_flip_offset = scaler->pitch*scaler->h;
 	
-	float scale_x = (float)VIDEO_WIDTH / SCALER_WIDTH;
-	float scale_y = (float)VIDEO_HEIGHT / SCALER_HEIGHT;
+	float scale_x = (float)SCREEN_WIDTH / SCALER_WIDTH;
+	float scale_y = (float)SCREEN_HEIGHT / SCALER_HEIGHT;
 	scale = scale_x < scale_y ? scale_x : scale_y;
 	
 	if (scale_mode==SCALE_NONE) {
@@ -709,15 +771,15 @@ static void reinit_layer(int w, int h) {
     int sh = round_to_nearest((int)(SCALER_HEIGHT * scale + 0.5f), 2);
 	
 	// if (scale_mode==SCALE_FULL) {
-	// 	sw = VIDEO_WIDTH;
-	// 	sh = VIDEO_HEIGHT;
+	// 	sw = SCREEN_WIDTH;
+	// 	sh = SCREEN_HEIGHT;
 	// }
 
-    int ox = round_to_nearest((VIDEO_WIDTH - sw) / 2, 2);
-    int oy = round_to_nearest((VIDEO_HEIGHT - sh) / 2, 2);
+    int ox = round_to_nearest((SCREEN_WIDTH - sw) / 2, 2);
+    int oy = round_to_nearest((SCREEN_HEIGHT - sh) / 2, 2);
 	
 	resize_scaler(ox,oy,sw,sh);
-	// resize_scaler(0,0,VIDEO_WIDTH,VIDEO_HEIGHT); // fullscreen
+	// resize_scaler(0,0,SCREEN_WIDTH,SCREEN_HEIGHT); // fullscreen
 }
 
 // --------------------------------------------
