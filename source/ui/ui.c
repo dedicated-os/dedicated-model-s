@@ -180,7 +180,7 @@ static int PWR_isConnected(void) {
 #define CPU_SPEED_SLEEP		0x00000112 // 16MHz
 #define CPU_SPEED_MIN		0x00c00532 // 192MHz
 #define CPU_SPEED_DEFAULT	0x02d01d22 // 720MHz
-#define CPU_SPEED_MAX		0x03601a32 // 864MHz
+#define CPU_SPEED_MAX		0x03601a32 // 864MHz (unstable)
 
 static void CPU_setSpeed(uint32_t mhz) {
 	volatile uint32_t* mem;
@@ -2671,10 +2671,25 @@ static void App_load(void) {
 	State_read();
 }
 
+static void App_preview(const char *path) {
+	SDL_Surface *preview = IMG_Load(path);
+	if (!preview) return;
+
+	int w = preview->w;
+	int h = preview->h;
+
+	if (SCALER_WIDTH!=w || SCALER_HEIGHT!=h) {
+		present_layers(VSYNC_WAIT);
+		reinit_layer(w, h);
+	}
+
+	SDL_FillRect(scaler, NULL, 0);
+	SDL_BlitSurface(preview, &(SDL_Rect){0,0,w,h}, scaler, &(SDL_Rect){(SCALER_WIDTH-w)/2,(SCALER_HEIGHT-h)/2});
+	SDL_FreeSurface(preview);
+	dirty_scaler();
+}
 static void App_menu(void) {
 	SDL_SaveBMP(framebuffer, SCREENSHOTS_PATH "/current.bmp");
-	
-	SDL_Surface *preview = NULL;
 	
 	if (ui.osd==OSD_NONE) {
 		SDL_FillRect(overlay, NULL, 0);
@@ -2818,16 +2833,7 @@ static void App_menu(void) {
 		
 		if (menu.quit) break;
 		
-		if (menu.dirty) {
-			dirty = 1;
-			menu.dirty = 0;
-		}
-		
-		if (dirty) {
-			if (preview) {
-				SDL_FreeSurface(preview);
-				preview = NULL;
-			}
+		if (dirty || menu.dirty) {
 			
 			char game_name[MAX_FILE];
 			strcpy(game_name, app.items[menu.current].name);
@@ -2836,7 +2842,8 @@ static void App_menu(void) {
 			char *dot = strrchr(game_name, '.');
 			if (dot && dot!=game_name) *dot = '\0';
 
-			if (!preview) {
+			if (menu.dirty) {
+				menu.dirty = 0;
 				char path[MAX_PATH];
 				if (menu.mode==MODE_MENU) {
 					MenuItem item = menu.items[menu.selected]; // won't exist in archive!
@@ -2853,15 +2860,11 @@ static void App_menu(void) {
 					else State_getPreviewPath(path, game_name);
 					if (!exists(path)) sprintf(path, ASSETS_PATH "/default-%s.png", console->slug);
 				}
-			
+				
 				// LOG("load preview: %s", path);
-			
-				// int w,h;
-				// preview = DOS_LoadTexture(ui.renderer, path);
-				// DOS_QueryTexture(preview, NULL, NULL, &w, &h);
-				// preview_rect = UI_center(w,h);
+				App_preview(path);
 			}
-			// if (preview) DOS_RenderCopy(ui.renderer, preview, NULL, &preview_rect);
+
 			UI_gradient(overlay);
 		
 			Font_shadowText(overlay, font12, console->name, 4,4, LIGHT_COLOR);
@@ -2963,11 +2966,9 @@ static void App_menu(void) {
 				}
 			}
 		
-			if (menu.mode==MODE_MENU) {
-				if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, bottom);
-				else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, bottom);
-			}
-		
+			if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, bottom);
+			else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, bottom);
+	
 			dirty_overlay();
 		}
 
@@ -2975,6 +2976,12 @@ static void App_menu(void) {
 	}
 	
 	if (ui.osd==OSD_NONE) disable_overlay();
+
+	if (!app.quit && !app.reload && (SCALER_WIDTH!=framebuffer->w || SCALER_HEIGHT!=framebuffer->h)) {
+		present_layers(VSYNC_WAIT);
+		reinit_layer(framebuffer->w, framebuffer->h);
+	}
+
 	Pad_reset();
 }
 static int App_listen(void) {
