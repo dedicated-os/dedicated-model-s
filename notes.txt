@@ -1,3 +1,10 @@
-I think font-dedicated-6 (5px tall) is going to be too small on the model S
-	11's 9px is already pushing it
-	mostly because of it's single pixel stroke width...
+it silently hangs when changing from game to game
+	usually on the second game
+	memory thing?
+
+UI_rect needs to support transparency and blending with dst
+	or maybe not here?
+overlay is still glitchy at bottom of screen
+	waitforvblankstart() fix introduces too much latency
+archive is currently split screen
+lots of janky bits
