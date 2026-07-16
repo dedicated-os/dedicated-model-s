@@ -1,4 +1,5 @@
 implement datetime
+	date -s '2027-07-16 13:16:30'
 
 it silently hangs when changing from game to game
 	usually on the second game

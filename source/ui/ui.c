@@ -248,11 +248,12 @@ static void CPU_setSpeed(uint32_t mhz) {
 // --------------------------------------------
 
 static struct {
-	int version;
-	int volume;		// 0-20
-	int brightness;	// 0 - 10
-	int frameskip;
-	int unused[4];
+	uint32_t version;
+	uint32_t volume;		// 0-20
+	uint32_t brightness;	// 0 - 10
+	uint32_t frameskip;
+	uint32_t datetime;
+	uint32_t unused[3];
 	char game[MAX_PATH];
 } settings = {
 	.version = 1,
@@ -270,10 +271,13 @@ static void Settings_load(void) {
 	if (!file) return;
 	fread(&settings, sizeof(settings), 1, file);
 	fclose(file);
+	
+	settimeofday(&(struct timeval){ .tv_sec = settings.datetime }, NULL);
 }
 static void Settings_save(void) {
 	FILE* file = fopen(SETTINGS_PATH, "wb");
 	if (!file) return;
+	settings.datetime = (uint32_t)time(NULL);
 	fwrite(&settings, sizeof(settings), 1, file);
 	fclose(file);
 	sync();
@@ -2232,6 +2236,7 @@ static struct {
 	int next;
 	int reload;
 	int quit;
+	int capture;
 } app;
 
 // --------------------------------------------
@@ -2239,6 +2244,7 @@ static struct {
 typedef enum {
 	MODE_MENU,
 	MODE_ARCHIVE,
+	MODE_DATETIME,
 } MenuMode;
 typedef enum {
 	ITEM_SAVE,
@@ -2721,6 +2727,272 @@ static void App_save(void) {
 static void App_load(void) {
 	State_read();
 }
+static void App_capture(void) {
+	SDL_SaveBMP(scaler, "/tmp/capture-scaler.bmp");
+	SDL_SaveBMP(overlay, "/tmp/capture-overlay.bmp");
+	app.capture = 0;
+}
+
+// --------------------------------------------
+
+typedef struct {
+	int year;
+	int month;
+	int day;
+	int hour;
+	int minute;
+	int second;
+	int ampm;
+} DateTime;
+static DateTime DateTime_get(void) {
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+	return (DateTime){
+		.year = tm.tm_year + 1900,
+		.month = tm.tm_mon + 1,
+		.day = tm.tm_mday,
+		.hour = tm.tm_hour,
+		.minute = tm.tm_min,
+		.second = tm.tm_sec,
+		.ampm = tm.tm_hour >= 12,
+	};
+}
+static void DateTime_set(DateTime *dt) {
+	struct tm tm = {0};
+	tm.tm_year = dt->year - 1900;
+	tm.tm_mon = dt->month - 1;
+	tm.tm_mday = dt->day;
+	tm.tm_hour = dt->hour;
+	tm.tm_min = dt->minute;
+	tm.tm_sec = dt->second;
+	tm.tm_isdst = -1;
+
+	time_t t = mktime(&tm);
+	if (t==(time_t)-1) return;
+	settimeofday(&(struct timeval){ .tv_sec = t }, NULL);
+}
+
+static int days_in_month(int year, int month) {
+	static const uint8_t days[] = {
+		31, 28, 31, 30, 31, 30,
+		31, 31, 30, 31, 30, 31
+	};
+
+	if (month == 2) {
+		int leap = (year % 4 == 0 && year % 100 != 0) ||
+		           (year % 400 == 0);
+		return 28 + leap;
+	}
+
+	return days[month - 1];
+}
+
+typedef enum {
+	DT_FIELD_YEAR = 0,
+	DT_FIELD_MONTH,
+	DT_FIELD_DAY,
+	DT_FIELD_HOUR,
+	DT_FIELD_MINUTE,
+	DT_FIELD_AMPM,
+	
+	DT_FIELD_COUNT,
+} DateTimeField;
+
+static struct {
+	DateTime datetime;
+	int columns[DT_FIELD_COUNT];
+	char separators[DT_FIELD_COUNT];
+	SDL_Rect rect;
+	int selected;
+} dt = { .separators = {'/','/',' ',':',0,0} };
+
+static void DateTime_init(void) {
+	DateTime datetime = DateTime_get();
+	dt.datetime = datetime;
+	
+	dt.columns[DT_FIELD_YEAR] = datetime.year;
+	dt.columns[DT_FIELD_MONTH] = datetime.month;
+	dt.columns[DT_FIELD_DAY] = datetime.day;
+	dt.columns[DT_FIELD_HOUR] = datetime.hour;
+	dt.columns[DT_FIELD_MINUTE] = datetime.minute;
+	dt.columns[DT_FIELD_AMPM] = datetime.ampm;
+	
+	dt.selected = DT_FIELD_DAY;
+	
+	if (dt.rect.y==0) {
+		int w = 3;
+		for (int i=0; i<DT_FIELD_COUNT; i++) {
+			// column
+			if (i==DT_FIELD_YEAR) w += 15 * 4 + 2 * 3;
+			else w += 15 * 2 + 2 * 1;
+			w += 3;
+		
+			// separator
+			if (i==DT_FIELD_AMPM) break;
+		
+			w += 1;
+			int sep = dt.separators[i];
+				 if (sep==':') w += 3;
+			else if (sep==' ') w += 8;
+			else if (sep=='/') w += 17;
+			w += 1;
+			w += 3;
+		}
+		
+		int h = 3 + 15 + 3;
+		int x = (SCREEN_WIDTH - w) / 2;
+		int y = (SCREEN_HEIGHT - h) / 2;
+		dt.rect = (SDL_Rect){x,y,w,h};
+	}
+}
+static int DateTime_update() {
+	int dirty = 0;
+	
+	if (Pad_justRepeated(PAD_LEFT)) {
+		dirty = 1;
+		dt.selected -= 1;
+		if (dt.selected<0) dt.selected += DT_FIELD_COUNT;
+	}
+	else if (Pad_justRepeated(PAD_RIGHT)) {
+		dirty = 1;
+		dt.selected += 1;
+		if (dt.selected>=DT_FIELD_COUNT) dt.selected -= DT_FIELD_COUNT;
+	}
+	
+	int validate = 0;
+	if (Pad_justRepeated(PAD_UP)) {
+		dt.columns[dt.selected] += 1;
+		if (dt.selected==DT_FIELD_AMPM) dt.columns[DT_FIELD_HOUR] += 12;
+		validate = 1;
+	}
+	else if (Pad_justRepeated(PAD_DOWN)) {
+		dt.columns[dt.selected] -= 1;
+		if (dt.selected==DT_FIELD_AMPM) dt.columns[DT_FIELD_HOUR] -= 12;
+		validate = 1;
+	}
+	
+	if (validate) {
+		int year	= dt.columns[DT_FIELD_YEAR];
+		int month	= dt.columns[DT_FIELD_MONTH];
+		int day		= dt.columns[DT_FIELD_DAY];
+		int hour	= dt.columns[DT_FIELD_HOUR];
+		int minute	= dt.columns[DT_FIELD_MINUTE];
+		int ampm	= dt.columns[DT_FIELD_AMPM];
+		
+		if (year < 1970) year = 1970;
+		else if (year > 2100) year = 2100;
+
+		if (month < 1) month = 12;
+		else if (month > 12) month = 1;
+
+		int max_day = days_in_month(year, month);
+
+		if (day < 1) day = max_day;
+		else if (day > max_day) day = 1;
+
+		if (hour < 0) hour += 24;
+		else if (hour >= 24) hour -= 24;
+		
+		ampm = hour >= 12;
+
+		if (minute < 0) minute = 59;
+		else if (minute > 59) minute = 0;
+		
+		dt.columns[DT_FIELD_YEAR]		= year;
+		dt.columns[DT_FIELD_MONTH]	= month;
+		dt.columns[DT_FIELD_DAY]		= day;
+		dt.columns[DT_FIELD_HOUR]		= hour;
+		dt.columns[DT_FIELD_MINUTE]	= minute;
+		dt.columns[DT_FIELD_AMPM]		= ampm;
+
+		dt.datetime.year = year;
+		dt.datetime.month = month;
+		dt.datetime.day = day;
+		dt.datetime.hour = hour;
+		dt.datetime.minute = minute;
+		dt.datetime.ampm = ampm;
+		
+		dirty = 1;
+	}
+	
+	return dirty;
+}
+static void DateTime_render(void) {
+	int x = dt.rect.x;
+	int y = dt.rect.y;
+	int w = dt.rect.w;
+	int h = dt.rect.h;
+	
+	char *lines[] = {
+		"Save in-game then",
+		"reset to apply",
+	};
+	int line_count = NUMBER_OF(lines);
+	for (int i=0; i<line_count; i++) {
+		int ow;
+		Font_getTextSize(font12, lines[i], &ow, NULL);
+		Font_shadowText(overlay, font12, lines[i], (SCREEN_WIDTH-ow)/2, y + 14 + h + (i * 12), LIGHT_COLOR);
+	}
+	
+	UI_rect(overlay, x-3,y-3,w+6,h+6, 0, TRIAD_ALPHA(BLACK_TRIAD,0x40));
+	int ox = x + 3;
+	int oy = y + 3;
+	for (int j=0; j<DT_FIELD_COUNT; j++) {
+		Font_renderFunc font_renderer = Font_shadowText;
+		SDL_Color color = WHITE_COLOR;
+	
+		if (j==dt.selected) {
+			int ow = 3;
+			if (j==DT_FIELD_YEAR) ow += 15 * 4 + 2 * 3;
+			else ow += 15 * 2 + 2 * 1;
+			ow += 3;
+			UI_rect(overlay, ox-2,oy-2, ow,h, 0, TRIAD_ALPHA(BLACK_TRIAD,0xff));
+			UI_rect(overlay, ox-3,oy-3, ow,h, 0, TRIAD_ALPHA(WHITE_TRIAD,0xff));
+			font_renderer = Font_renderText;
+			color = DARK_COLOR;
+		}
+	
+		char *format = "%02i";
+		if (j==DT_FIELD_YEAR) format = "%04i";
+	
+		int value = dt.columns[j];
+		if (j==DT_FIELD_HOUR) {
+			if (value==0) value = 12;
+			if (value>12) value -= 12;
+		}
+	
+		char tmp[8];
+		if (j==DT_FIELD_AMPM) sprintf(tmp, "%s", value ? "PM" : "AM");
+		else sprintf(tmp, format, value);
+		
+		int len = strlen(tmp);
+		for (int k=0; k<len; k++) {
+			char c[2];
+			sprintf(c, "%c", tmp[k]);
+			int ow;
+			Font_getTextSize(font18, c, &ow, NULL);
+			font_renderer(overlay, font18, c, ox+(16-ow)/2,oy, color);
+			ox += 15;
+			ox += 2;
+		}
+		ox += 1; // the previous 2 + 1 = total of 3
+	
+		if (j==DT_FIELD_AMPM) break;
+	
+		ox += 1;
+		value = dt.separators[j];
+		if (value) {
+			if (value=='/') ox += 1;
+			sprintf(tmp, "%c", value);
+			Font_shadowText(overlay, font18, tmp, ox,oy, WHITE_COLOR);
+		}
+			 if (value==':') ox += 3;
+		else if (value==' ') ox += 8;
+		else if (value=='/') ox += 15 + 1;
+		ox += 1;
+		ox += 3;
+	}
+}
 
 static void App_preview(const char *path) {
 	SDL_Surface *preview = IMG_Load(path);
@@ -2746,7 +3018,6 @@ static void App_preview(const char *path) {
 		enable_scaler();
 	}
 }
-
 static void App_menu(void) {
 	SDL_SaveBMP(framebuffer, SCREENSHOTS_PATH "/current.bmp");
 	
@@ -2839,6 +3110,12 @@ static void App_menu(void) {
 					}
 				}
 			}
+			
+			if (Pad_justPressed(PAD_SELECT)) {
+				DateTime_init();
+				menu.mode = MODE_DATETIME;
+				menu.dirty = 1;
+			}
 		}
 		else if (menu.mode==MODE_ARCHIVE) {
 			if (Pad_justRepeated(PAD_UP)) { // ROW UP
@@ -2898,6 +3175,24 @@ static void App_menu(void) {
 				menu.selected = back==app.current ? 2 : 1; // ARCHIVE
 				menu.mode = MODE_MENU;
 				menu.dirty = 1;
+			}
+		}
+		else if (menu.mode==MODE_DATETIME) {
+			if (DateTime_update()) dirty = 1;
+			
+			if (Pad_justPressed(PAD_A)) {
+				DateTime_set(&dt.datetime);
+				menu.mode = MODE_MENU;
+				menu.dirty = 1;
+			}
+			
+			if (Pad_justPressed(PAD_B)) {
+				menu.mode = MODE_MENU;
+				menu.dirty = 1;
+			}
+			
+			if (Pad_justPressed(PAD_SELECT)) {
+				app.capture = 1;
 			}
 		}
 		
@@ -3035,13 +3330,17 @@ static void App_menu(void) {
 					Font_renderText(overlay, font12, fit, x+20,oy+5, c);
 				}
 			}
+			else if (menu.mode==MODE_DATETIME) {
+				DateTime_render();
+			}
 		
 			if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, bottom);
 			else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, bottom);
 	
 			dirty_overlay();
 		}
-
+		
+		if (app.capture) App_capture();
 		present_layers(fastforward ? VSYNC_NONE : VSYNC_WAIT);
 	}
 	
