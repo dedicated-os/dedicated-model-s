@@ -1265,9 +1265,11 @@ static struct SND_Context {
 void SND_consumeCallback(void* userdata, uint8_t* stream, int len);
 
 static inline int SND_availableToRead(void) {
+	if (snd.frame_count <= 0) return 0;
 	return (snd.frame_in - snd.frame_out + snd.frame_count) % snd.frame_count;
 }
 static inline int SND_availableToWrite(void) {
+	if (snd.frame_count <= 0) return 0;
 	return (snd.frame_out - snd.frame_in - 1 + snd.frame_count) % snd.frame_count;
 }
 
@@ -1347,6 +1349,7 @@ void SND_quit(void) {
 	SDL_PauseAudio(1);
 	SDL_CloseAudio();
 	free(snd.buffer);
+	memset(&snd, 0, sizeof(snd));
 }
 void SND_pause(void) {
 	SDL_PauseAudio(1);
@@ -1358,14 +1361,25 @@ void SND_resume(void) {
 
 size_t SND_produceCallback(const SND_Frame* frames, size_t count) {
 	// LOG("SND_produceCallback(%i)", count);
+	if (!snd.buffer || snd.frame_count <= 0) return 0;
+	if (count >= (size_t)snd.frame_count) {
+		frames += count - (snd.frame_count - 1);
+		count = snd.frame_count - 1;
+	}
 	
 	SDL_LockAudio();
 	// LOG("producer waiting? count (%i) > available (%i))...", count, SND_availableToWrite());
+	uint32_t wait_start = SDL_GetTicks();
 	while (count > SND_availableToWrite()) {
 		// LOG("producer waiting (%i)...", SND_availableToWrite());
 		SDL_UnlockAudio();
 		SDL_Delay(1);
 		SDL_LockAudio();
+		if (SDL_GetTicks() - wait_start > 250) {
+			SDL_UnlockAudio();
+			LOG("SND_produceCallback timeout; dropping %u frames", (unsigned)count);
+			return 0;
+		}
 	}
 	for (int i=0; i<count; ++i) {
 		snd.buffer[snd.frame_in] = frames[i];
@@ -1386,6 +1400,10 @@ void SND_consumeCallback(void* userdata, uint8_t* stream, int len) {
 	int16_t* out = (int16_t*)stream;
 	int count = len / sizeof(SND_Frame);
 	// LOG("SND_consumeCallback(%i)", count);
+	if (!snd.buffer || snd.frame_count <= 0) {
+		memset(stream, 0, len);
+		return;
+	}
 
 	double ratio = snd.resample_ratio; // * snd.resample_drift;
 	double fill = (double)SND_availableToRead() / (double)snd.frame_count;
@@ -2977,6 +2995,7 @@ static void App_listen(void) {
 		if (Pad_justPressed(PAD_SELECT)) {
 			Pad_consume(PAD_SELECT);
 			ignore_menu = 1;
+			app.next = app.current;
 			app.reload = 1;
 		}
 	}
