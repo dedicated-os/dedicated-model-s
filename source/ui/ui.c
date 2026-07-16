@@ -276,6 +276,7 @@ static void Settings_save(void) {
 	if (!file) return;
 	fwrite(&settings, sizeof(settings), 1, file);
 	fclose(file);
+	sync();
 }
 static void Settings_setVolume(int value) {
 	raw_vol(value * 5);
@@ -2657,6 +2658,7 @@ static void App_quit(void) {
 	if (app.reload) {
 		app.reload = 0;
 		App_set(app.next);
+		Settings_save();
 	}
 	free(app.items);
 }
@@ -2695,6 +2697,7 @@ static void App_preview(const char *path) {
 static void App_sleep(void) {
 	State_autosave();
 	SRAM_write();
+	Settings_save();
 
 	disable_layers();
 	raw_bri(0);
@@ -3101,94 +3104,6 @@ static void App_render(void) {
 	}
 
 	present_layers(fastforward ? VSYNC_NONE : VSYNC_WAIT);
-}
-
-int main_OLD(void) {
-	LOG_init();
-	UI_init();
-		
-	int x = 0; // tmp
-	
-	// UI_gradient(overlay);
-	// UI_battery(PWR_getBatteryPercent(), 0, 1);
-	// Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
-	// Font_shadowText(overlay, font18, "Game Boy Micro", 4,4+18, WHITE_COLOR);
-	// dirty_overlay();
-	
-	int menu_combo = 0;
-	int quit = 0;
-	while (!quit) {
-		App_listen();
-		
-		if (Pad_justPressed(PAD_MENU)) menu_combo = 0;
-		if (menu_combo && Pad_justReleased(PAD_MENU)) Pad_consume(PAD_MENU);
-			
-		if (Pad_isPressed(PAD_MENU)) {
-			if (Pad_justRepeated(PAD_UP)) {
-				Pad_consume(PAD_UP);
-				menu_combo = 1;
-				UI_setOSD(OSD_BRIGHTNESS);
-				if (settings.brightness<10) {
-					Settings_setBrightness(settings.brightness+1);
-				}
-			}
-			else if (Pad_justRepeated(PAD_DOWN)) {
-				Pad_consume(PAD_DOWN);
-				menu_combo = 1;
-				UI_setOSD(OSD_BRIGHTNESS);
-				if (settings.brightness>0) {
-					Settings_setBrightness(settings.brightness-1);
-				}
-			}
-			else if (Pad_justRepeated(PAD_LEFT)) {
-				Pad_consume(PAD_LEFT);
-				menu_combo = 1;
-				UI_setOSD(OSD_VOLUME);
-				if (settings.volume>0) {
-					Settings_setVolume(settings.volume-1);
-				}
-			}
-			else if (Pad_justRepeated(PAD_RIGHT)) {
-				Pad_consume(PAD_RIGHT);
-				menu_combo = 1;
-				UI_setOSD(OSD_VOLUME);
-				if (settings.volume<20) {
-					Settings_setVolume(settings.volume+1);
-				}
-			}
-		}
-		
-		if (Pad_justPressed(PAD_START)) quit = 1;
-		
-		x += 4;
-		if (x>SCREEN_WIDTH) x -= SCREEN_WIDTH;
-
-		UI_gradient(overlay);
-		UI_battery(PWR_getBatteryPercent(), 0, 1);
-
-		Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
-		Font_shadowText(overlay, font18, "Game Boy Micro", 4,4+18, WHITE_COLOR);
-
-		UI_fillRect(overlay, x,0,16,SCREEN_HEIGHT, RED_COLOR);
-		UI_fillRect(overlay, x-SCREEN_WIDTH,0,16,SCREEN_HEIGHT, RED_COLOR);
-
-		int bottom = SCREEN_HEIGHT;
-		if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, bottom);
-		else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, bottom);
-
-		dirty_overlay();
-		
-		SDL_FillRect(scaler, NULL, 0xff282828);
-		UI_fillRect(scaler, SCREEN_WIDTH-x,0,16,SCREEN_HEIGHT, YELLOW_COLOR);
-		UI_fillRect(scaler, SCREEN_WIDTH-(x-SCREEN_WIDTH),0,16,SCREEN_HEIGHT, YELLOW_COLOR);
-		
-		dirty_scaler();
-		
-		present_layers(VSYNC_WAIT);
-	}
-	
-	UI_quit();
-	return 0;
 }
 
 int main(void) {

@@ -1,7 +1,6 @@
+implement datetime
+
 it silently hangs when changing from game to game
 	usually on the second game
 	memory thing?
 	fixed?
-
-archive is currently split screen
-lots of janky bits
