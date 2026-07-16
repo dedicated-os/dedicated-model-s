@@ -323,6 +323,7 @@ static int	SCALER_HEIGHT	= SCREEN_HEIGHT; // (180)
 #define	LAYER1			(1)
 #define	LAYER2			(2)
 #define	LAYER3			(3)
+#define	OVERLAY_BUFFERS	(3)
 
 typedef struct ion_alloc_info {
 	uint32_t			size;
@@ -342,6 +343,7 @@ uint16_t			vbp, vt;
 
 uint32_t 			sc_flip_offset = UINT32_MAX;
 uint32_t 			ov_flip_offset = UINT32_MAX;
+int					ov_buffer = 1;
 int					sc_dirty = 0;
 int					ov_dirty = 0;
 float 				scale = 1.0;
@@ -546,7 +548,8 @@ static void present_layers(int vsync) {
 		ov_info.fb.addr[0] = (uintptr_t)ov_meminfo.padd + ov_flip_offset;
 		debe_map[LAY2_ADDR_REG_L/4] = DEBE_ADDR(ov_info.fb.addr[0]);
 		// debe_map[0x8c4/4] = 0x40;
-		ov_flip_offset ^= overlay->pitch*overlay->h;
+		ov_buffer = (ov_buffer + 1) % OVERLAY_BUFFERS;
+		ov_flip_offset = overlay->pitch*overlay->h * ov_buffer;
 		overlay->pixels = (void*)((uintptr_t)ov_meminfo.vadd + ov_flip_offset);
 		ov_dirty = 0;
 	}
@@ -600,7 +603,7 @@ static void setup_layers(void) {
 
 	// allocate memory for scaler/overlay layers
 	sc_meminfo.size = ((SCREEN_WIDTH*SCREEN_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
-	ov_meminfo.size = ((SCREEN_WIDTH*SCREEN_HEIGHT*4)*2 + 4095) & (~4095); // doublebuf
+	ov_meminfo.size = ((SCREEN_WIDTH*SCREEN_HEIGHT*4)*OVERLAY_BUFFERS + 4095) & (~4095);
 	ion_alloc(&sc_meminfo);
 	ion_alloc(&ov_meminfo);
 	memset(ov_meminfo.vadd, 0, ov_meminfo.size);
@@ -662,6 +665,7 @@ static void setup_layers(void) {
 	if (ioctl(disp_fd, DISP_CMD_LAYER_SET_INFO, &args)<0) fprintf(stderr, "LAYER_SET_INFO failed %s\n",strerror(errno));
 	
 	ov_flip_offset = overlay->pitch*overlay->h;
+	ov_buffer = 1;
 }
 static void enable_layers(void) {
 	uint32_t args[4] = {0, LAYER1, 0, 0};
