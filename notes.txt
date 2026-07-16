@@ -1,7 +1,10 @@
-implement datetime
-	date -s '2027-07-16 13:16:30'
-
-it silently hangs when changing from game to game
-	usually on the second game
-	memory thing?
-	fixed?
+fastforward
+	icon
+	turn osd into a bitmask?
+		so it can hold FF and existing values?
+bootlogo
+	create
+	auto installer
+installer
+	hijack
+check SD for changes to main.sh

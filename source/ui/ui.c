@@ -30,7 +30,7 @@ static int fastforward = 0; // TODO: move to app?
 
 #define CEIL_TO(x, n) (((x) + (n) - 1) / (n) * (n))
 #define NUMBER_OF(items) (sizeof(items) / sizeof((items)[0]))
-#define ms SDL_GetTicks
+#define ELAPSED_SINCE(duration, when) ((int32_t)(SDL_GetTicks() - (when)) >= (int32_t)(duration))
 
 // --------------------------------------------
 // logging
@@ -1183,7 +1183,7 @@ static void Pad_update(void) {
 	pad.just_repeated = PAD_NONE;
 	
 	// update repeat states
-	uint32_t tick = ms();
+	uint32_t tick = SDL_GetTicks();
 	for (int i=0; i<PAD_ID_COUNT; i++) {
 		int btn = 1 << i;
 		if ((pad.is_pressed & btn) && (tick>=pad.repeat_at[i])) {
@@ -1839,6 +1839,9 @@ static bool environment_callback(unsigned cmd, void *data) {
 static void video_refresh_callback(const void *data, unsigned width, unsigned height, size_t pitch) {
 	if (!data) return;
 	
+	static uint32_t last_ms = 0;
+	if (fastforward && !ELAPSED_SINCE(16, last_ms)) return;
+	
 	if (framebuffer && (framebuffer->w!=width || framebuffer->h!=height || framebuffer->pitch!=pitch)) {
 		SDL_FreeSurface(framebuffer);
 		framebuffer = NULL;
@@ -1853,6 +1856,8 @@ static void video_refresh_callback(const void *data, unsigned width, unsigned he
 	SDL_BlitSurface(framebuffer, &(SDL_Rect){0,0,width,height}, scaler, &(SDL_Rect){(SCALER_WIDTH-width)/2,(SCALER_HEIGHT-height)/2});
 	
 	dirty_scaler();
+	
+	last_ms = SDL_GetTicks();
 }
 static void audio_sample_callback(int16_t left, int16_t right) {
 	if (fastforward) return;
@@ -2660,6 +2665,8 @@ static void App_init(void) {
 	
 	Menu_quit();
 	
+	fastforward = 0;
+	
 	app.count = 0;
 	app.current = 0;
 	app.capacity = 16;
@@ -2719,6 +2726,7 @@ static void App_quit(void) {
 		Settings_save();
 	}
 	free(app.items);
+	fastforward = 0;
 }
 
 static void App_save(void) {
@@ -3341,7 +3349,7 @@ static void App_menu(void) {
 		}
 		
 		if (app.capture) App_capture();
-		present_layers(fastforward ? VSYNC_NONE : VSYNC_WAIT);
+		present_layers(VSYNC_WAIT);
 	}
 	
 	if (ui.osd==OSD_NONE) disable_overlay();
@@ -3394,12 +3402,19 @@ static int App_listen(void) {
 			}
 		}
 		
-		if (Pad_justPressed(PAD_R1)) {
-			Pad_consume(PAD_R1);
+		if (Pad_justPressed(PAD_L1)) {
+			Pad_consume(PAD_L1);
 			ignore_menu = 1;
 			settings.frameskip = !settings.frameskip;
 			core_options_dirty =1;
 		}
+		
+		if (Pad_justPressed(PAD_R1)) {
+			Pad_consume(PAD_R1);
+			ignore_menu = 1;
+			fastforward = !fastforward;
+		}
+		
 		
 		if (Pad_justPressed(PAD_START)) {
 			Pad_consume(PAD_START);
