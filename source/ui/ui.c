@@ -2325,6 +2325,58 @@ static void Menu_quit(void) {
 
 // --------------------------------------------
 
+#define AWAKE_TIMEOUT (30 * 1000) // thirty seconds
+static int awake_at = 0;
+static void Device_poke(void) {
+	awake_at = SDL_GetTicks();
+}
+static void Device_sleep(void) {
+	State_autosave();
+	SRAM_write();
+	Settings_save();
+
+	disable_layers();
+	raw_bri(0);
+	raw_vol(0);
+	CPU_setSpeed(CPU_SPEED_SLEEP);
+
+	int wake = 0;
+	SDL_Event event;
+	while (!wake) {
+		SDL_Delay(200);
+		while (SDL_PollEvent(&event)) {
+			SDLKey key = event.key.keysym.sym;
+			if (event.type==SDL_KEYUP && key==KEYSYM_MENU) {
+				wake = 1;
+			}
+		}
+	}
+
+	CPU_setSpeed(CPU_SPEED_DEFAULT);
+	Settings_setVolume(settings.volume);
+	Settings_setBrightness(settings.brightness);
+	enable_layers();
+	Pad_reset();
+	Device_poke();
+}
+static int Device_autosleep(void) {
+	int dirty = 0;
+	
+	if (Pad_anyPressed() || Pad_anyJustPressed() || Pad_anyJustReleased()) {
+		Device_poke();
+		return dirty;
+	}
+	
+	if (SDL_GetTicks() >= awake_at+AWAKE_TIMEOUT) {
+		Device_sleep();
+		dirty = 1; // force redraw on wake
+		Device_poke();
+	}
+	return dirty;
+}
+
+// --------------------------------------------
+
 static int compareNatural(const char *a, const char *b) {
 	while (*a && *b) {
 		// ensure "Game 10.ext" sorts after "Game 2.ext"
@@ -2694,34 +2746,7 @@ static void App_preview(const char *path) {
 		enable_scaler();
 	}
 }
-static void App_sleep(void) {
-	State_autosave();
-	SRAM_write();
-	Settings_save();
 
-	disable_layers();
-	raw_bri(0);
-	raw_vol(0);
-	CPU_setSpeed(CPU_SPEED_SLEEP);
-
-	int wake = 0;
-	SDL_Event event;
-	while (!wake) {
-		SDL_Delay(200);
-		while (SDL_PollEvent(&event)) {
-			SDLKey key = event.key.keysym.sym;
-			if (event.type==SDL_KEYUP && key==KEYSYM_MENU) {
-				wake = 1;
-			}
-		}
-	}
-
-	CPU_setSpeed(CPU_SPEED_DEFAULT);
-	Settings_setVolume(settings.volume);
-	Settings_setBrightness(settings.brightness);
-	enable_layers();
-	Pad_reset();
-}
 static void App_menu(void) {
 	SDL_SaveBMP(framebuffer, SCREENSHOTS_PATH "/current.bmp");
 	
@@ -2732,6 +2757,9 @@ static void App_menu(void) {
 		enable_overlay();
 	}
 	
+	Pad_reset();
+	Device_poke();
+	
 	Menu_init();
 	int top = 0;
 	int rows = 6;
@@ -2739,11 +2767,12 @@ static void App_menu(void) {
 	int back = menu.current;
 	while (!menu.quit) {
 		Pad_update();
-		if (App_listen()) dirty = 1;;
+		if (App_listen()) dirty = 1;
+		if (Device_autosleep()) dirty = 1;
 		
 		if (Pad_justReleased(PAD_MENU)) {
 			Pad_consume(PAD_MENU);
-			App_sleep();
+			Device_sleep();
 			dirty = 1;
 			menu.dirty = 1;
 		}
