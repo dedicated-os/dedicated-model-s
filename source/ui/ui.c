@@ -2685,7 +2685,7 @@ static void App_menu(void) {
 	
 	Menu_init();
 	int top = 0;
-	int rows = 10;
+	int rows = 6;
 	int dirty = 1;
 	int back = menu.current;
 	while (!menu.quit) {
@@ -2938,9 +2938,9 @@ static void App_menu(void) {
 	
 				x = 0;
 				y = bottom;
-				h = 16;
+				h = 20;
 			
-				// TODO: fill black?
+				SDL_FillRect(overlay, &(SDL_Rect){0,y,SCREEN_WIDTH,y}, 0xFF000000);
 			
 				// draw viewport
 				for (int i=top; i<end; i++) {
@@ -2956,10 +2956,10 @@ static void App_menu(void) {
 		
 					char fit[MAX_FILE];
 					App_getDisplayName(item->name, name);
-					App_trunc(font12, name, SCREEN_WIDTH-(16+8), fit);
-		
-					// DOS_RenderCopy(ui.renderer, ui.icons, &(DOS_Rect){item->hidden?24:0,0,24,24}, &(DOS_Rect){x+4,oy+4,24,24});
-					Font_renderText(overlay, font12, fit, x+16,oy+3, c);
+					App_trunc(font12, name, SCREEN_WIDTH-(20+4), fit);
+					
+					SDL_BlitSurface(ui.icons, &(SDL_Rect){item->hidden?12:0,0,12,12}, overlay, &(SDL_Rect){x+4,oy+4,12,12});
+					Font_renderText(overlay, font12, fit, x+20,oy+5, c);
 				}
 			}
 		
