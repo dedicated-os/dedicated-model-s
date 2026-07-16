@@ -1,8 +1,7 @@
 it silently hangs when changing from game to game
 	usually on the second game
 	memory thing?
+	fixed?
 
-UI_rect needs to support transparency and blending with dst
-	or maybe not here?
 archive is currently split screen
 lots of janky bits

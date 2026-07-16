@@ -1584,6 +1584,16 @@ static void UI_fillRect(SDL_Surface* dst, int x, int y, int w, int h, SDL_Color 
 		}
 	}
 }
+static inline uint32_t UI_blendPixel(uint32_t src, uint32_t dst) {
+	if ((dst >> 24) == 0) return src;
+
+	uint8_t a = src >> 24;
+	uint32_t rb = ((src & 0x00FF00FF) * a + (dst & 0x00FF00FF) * (255 - a)) >> 8;
+	uint32_t g  = ((src & 0x0000FF00) * a + (dst & 0x0000FF00) * (255 - a)) >> 8;
+	uint8_t out_a = a + ((dst >> 24) * (255 - a)) / 255;
+
+	return (out_a << 24) | (rb & 0x00FF00FF) | (g & 0x0000FF00);
+}
 static void UI_rect(SDL_Surface* dst, int x, int y, int w, int h, int s, SDL_Color c) {
 	if (w <= 0 || h <= 0) return;
 
@@ -1598,10 +1608,11 @@ static void UI_rect(SDL_Surface* dst, int x, int y, int w, int h, int s, SDL_Col
 	if (y1 > dst->h) y1 = dst->h;
 	if (x0 >= x1 || y0 >= y1) return;
 
-	uint32_t color = 0xFF000000 |
-		((uint32_t)c.r << 16) |
-		((uint32_t)c.g << 8) |
-		(uint32_t)c.b;
+	uint8_t a = c.unused;
+	if (a == 0) return;
+	
+	uint32_t color = ((uint32_t)a << 24) | ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | (uint32_t)c.b;
+	int blend = c.unused != 0xff;
 
 	uint32_t* pixels = (uint32_t*)dst->pixels;
 	int pitch = dst->pitch / 4;
@@ -1618,7 +1629,9 @@ static void UI_rect(SDL_Surface* dst, int x, int y, int w, int h, int s, SDL_Col
 			}
 
 			uint32_t* d = pixels + yy * pitch + x + lx;
-			for (int xx = lx; xx < rx; xx++) *d++ = color;
+			for (int xx = lx; xx < rx; xx++, d++) {
+				*d = blend ? UI_blendPixel(color, *d) : color;
+			}
 		}
 		return;
 	}
@@ -1642,7 +1655,9 @@ static void UI_rect(SDL_Surface* dst, int x, int y, int w, int h, int s, SDL_Col
 			}
 
 			uint32_t* d = pixels + yy * pitch + x + lx0;
-			for (int xx = lx0; xx < lx1; xx++) *d++ = color;
+			for (int xx = lx0; xx < lx1; xx++, d++) {
+				*d = blend ? UI_blendPixel(color, *d) : color;
+			}
 		}
 		else {
 			int left0 = lx0;
@@ -1651,10 +1666,14 @@ static void UI_rect(SDL_Surface* dst, int x, int y, int w, int h, int s, SDL_Col
 			int right1 = lx1;
 
 			uint32_t* d = pixels + yy * pitch + x + left0;
-			for (int xx = left0; xx < left1; xx++) *d++ = color;
+			for (int xx = left0; xx < left1; xx++, d++) {
+				*d = blend ? UI_blendPixel(color, *d) : color;
+			}
 
 			d = pixels + yy * pitch + x + right0;
-			for (int xx = right0; xx < right1; xx++) *d++ = color;
+			for (int xx = right0; xx < right1; xx++, d++) {
+				*d = blend ? UI_blendPixel(color, *d) : color;
+			}
 		}
 	}
 }
