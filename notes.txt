@@ -1,10 +1,8 @@
-fastforward
-	icon
-	turn osd into a bitmask?
-		so it can hold FF and existing values?
 bootlogo
 	create
 	auto installer
 installer
 	hijack
 check SD for changes to main.sh
+frameskip
+	should it have an icon?

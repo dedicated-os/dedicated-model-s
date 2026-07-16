@@ -1489,11 +1489,12 @@ static void UI_init(void) {
 	
 	reinit_layer(SCREEN_WIDTH, SCREEN_HEIGHT); // TODO: remove
 	
+	ui.icons = IMG_Load(ASSETS_PATH "/icons.png");
 	Fonts_init(); // TODO: can this be deferred to extras?
 	Pad_reset();
 }
 static void UI_quit(void) {
-	if (ui.icons) SDL_FreeSurface(ui.icons);
+	SDL_FreeSurface(ui.icons);
 	
 	Fonts_quit();
 	Framebuffer_quit();
@@ -1503,25 +1504,13 @@ static void UI_quit(void) {
 	SDL_Quit();
 	raw_quit();
 }
-static void UI_extras(void) {
-	if (!ui.icons) ui.icons = IMG_Load(ASSETS_PATH "/icons.png");
-}
 static void UI_setOSD(OSDMode osd) {
-	if (ui.osd==OSD_NONE && osd!=OSD_NONE) {
-		if (!ui.menu) {
-			SDL_FillRect(overlay, NULL, 0);
-			dirty_overlay();
-			present_layers(VSYNC_NONE);
-			enable_overlay();
-		}
-	}
 	ui.osd = osd;
 	ui.osd_at = SDL_GetTicks();
 }
 static void UI_update(void) {
 	if (ui.osd!=OSD_NONE && SDL_GetTicks()>ui.osd_at+1000) {
 		ui.osd = OSD_NONE;
-		if (!ui.menu) disable_overlay();
 	}
 }
 
@@ -1676,6 +1665,47 @@ static void UI_rect(SDL_Surface* dst, int x, int y, int w, int h, int s, SDL_Col
 			for (int xx = right0; xx < right1; xx++, d++) {
 				*d = blend ? UI_blendPixel(color, *d) : color;
 			}
+		}
+	}
+}
+static void UI_blit(SDL_Surface *src, SDL_Rect *src_rect, SDL_Surface *dst, SDL_Rect *dst_rect) {
+	if (!src || !dst) return;
+	
+	int sx = src_rect ? src_rect->x : 0;
+	int sy = src_rect ? src_rect->y : 0;
+	int dx = dst_rect ? dst_rect->x : 0;
+	int dy = dst_rect ? dst_rect->y : 0;
+	int w = src_rect ? src_rect->w : src->w;
+	int h = src_rect ? src_rect->h : src->h;
+
+	if (dx < 0) { sx -= dx; w += dx; dx = 0; }
+	if (dy < 0) { sy -= dy; h += dy; dy = 0; }
+	if (sx < 0) { dx -= sx; w += sx; sx = 0; }
+	if (sy < 0) { dy -= sy; h += sy; sy = 0; }
+
+	if (sx + w > src->w) w = src->w - sx;
+	if (sy + h > src->h) h = src->h - sy;
+	if (dx + w > dst->w) w = dst->w - dx;
+	if (dy + h > dst->h) h = dst->h - dy;
+
+	if (w <= 0 || h <= 0) return;
+
+	uint32_t *src_pixels = (uint32_t *)src->pixels;
+	uint32_t *dst_pixels = (uint32_t *)dst->pixels;
+	int src_pitch = src->pitch / 4;
+	int dst_pitch = dst->pitch / 4;
+
+	for (int y=0; y<h; y++) {
+		uint32_t *s = src_pixels + (sy + y) * src_pitch + sx;
+		uint32_t *d = dst_pixels + (dy + y) * dst_pitch + dx;
+
+		for (int x=0; x<w; x++) {
+			uint32_t sp = s[x];
+			uint8_t a = sp >> 24;
+
+			if (a == 0) continue;
+			if (a == 255 || (d[x] >> 24) == 0) d[x] = sp;
+			else d[x] = UI_blendPixel(sp, d[x]);
 		}
 	}
 }
@@ -2326,7 +2356,6 @@ static void Menu_init(void) {
 	menu.items = current_items;
 	menu.count = NUMBER_OF(current_items);
 	menu.dirty = 1;
-	UI_extras();
 }
 static void Menu_quit(void) {
 	ui.menu = 0;
@@ -3026,6 +3055,7 @@ static void App_preview(const char *path) {
 		enable_scaler();
 	}
 }
+static int invalidate_overlay = 0;
 static void App_menu(void) {
 	SDL_SaveBMP(framebuffer, SCREENSHOTS_PATH "/current.bmp");
 	
@@ -3334,7 +3364,7 @@ static void App_menu(void) {
 					App_getDisplayName(item->name, name);
 					App_trunc(font12, name, SCREEN_WIDTH-(20+4), fit);
 					
-					SDL_BlitSurface(ui.icons, &(SDL_Rect){item->hidden?12:0,0,12,12}, overlay, &(SDL_Rect){x+4,oy+4,12,12});
+					UI_blit(ui.icons, &(SDL_Rect){item->hidden?12:0,0,12,12}, overlay, &(SDL_Rect){x+4,oy+4,12,12});
 					Font_renderText(overlay, font12, fit, x+20,oy+5, c);
 				}
 			}
@@ -3353,6 +3383,7 @@ static void App_menu(void) {
 	}
 	
 	if (ui.osd==OSD_NONE) disable_overlay();
+	invalidate_overlay = 1;
 
 	if (!app.quit && !app.reload && (SCALER_WIDTH!=framebuffer->w || SCALER_HEIGHT!=framebuffer->h)) {
 		present_layers(VSYNC_WAIT);
@@ -3415,7 +3446,6 @@ static int App_listen(void) {
 			fastforward = !fastforward;
 		}
 		
-		
 		if (Pad_justPressed(PAD_START)) {
 			Pad_consume(PAD_START);
 			ignore_menu = 1;
@@ -3432,18 +3462,66 @@ static int App_listen(void) {
 		if (!ignore_menu) {
 			if (!ui.menu) App_menu();
 		}
-		else ignore_menu = 0;
+		else Pad_consume(PAD_MENU);
 	}
 	
 	return ignore_menu;
 }
 static void App_render(void) {
+	static int overlay_enabled = 0;
+	static int last_ff = -1;
+	static int last_osd = -1;
+	static int last_bri = -1;
+	static int last_vol = -1;
 	
-	if (ui.osd!=OSD_NONE) {
-		SDL_FillRect(overlay, NULL, 0);
-		if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, SCREEN_HEIGHT);
-		else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, SCREEN_HEIGHT);
-		dirty_overlay();
+	if (invalidate_overlay) {
+		invalidate_overlay = 0;
+		overlay_enabled = 0;
+		last_ff = -1;
+	}
+
+	int show_overlay = fastforward || ui.osd != OSD_NONE;
+	int changed =
+		fastforward != last_ff ||
+		ui.osd != last_osd ||
+		settings.brightness != last_bri ||
+		settings.volume != last_vol;
+
+	if (changed) {
+		last_ff = fastforward;
+		last_osd = ui.osd;
+		last_bri = settings.brightness;
+		last_vol = settings.volume;
+
+		if (show_overlay) {
+			SDL_FillRect(overlay, NULL, 0);
+
+			if (fastforward) {
+				UI_blit(ui.icons, &(SDL_Rect){24,0,12,12}, overlay, &(SDL_Rect){2,2,12,12});
+			}
+
+			if (ui.osd == OSD_BRIGHTNESS) {
+				UI_OSD("BRIGHTNESS", settings.brightness, 10, SCREEN_HEIGHT);
+			}
+			else if (ui.osd == OSD_VOLUME) {
+				UI_OSD("VOLUME", settings.volume, 20, SCREEN_HEIGHT);
+			}
+
+			dirty_overlay();
+
+			if (!overlay_enabled) {
+				present_layers(VSYNC_NONE);
+				enable_overlay();
+				overlay_enabled = 1;
+			}
+		}
+		else if (overlay_enabled) {
+			SDL_FillRect(overlay, NULL, 0);
+			dirty_overlay();
+			// present_layers(VSYNC_NONE);
+			disable_overlay();
+			overlay_enabled = 0;
+		}
 	}
 
 	present_layers(fastforward ? VSYNC_NONE : VSYNC_WAIT);
