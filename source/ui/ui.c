@@ -1831,7 +1831,7 @@ static size_t audio_sample_batch_callback(const int16_t *data, size_t frames) {
 	return SND_produceCallback((const SND_Frame*)data, frames);
 }
 
-static void App_listen(void);
+static int App_listen(void);
 static void input_poll_callback(void) {
 	Pad_update();
 	App_listen();
@@ -2646,16 +2646,17 @@ static void App_menu(void) {
 	
 	SDL_Surface *preview = NULL;
 	
-	UI_gradient(overlay);
+	SDL_FillRect(overlay, NULL, 0);
 	enable_overlay();
 	
 	Menu_init();
 	int top = 0;
 	int rows = 10;
+	int dirty = 1;
 	int back = menu.current;
 	while (!menu.quit) {
 		Pad_update();
-		App_listen();
+		if (App_listen()) dirty = 1;;
 		
 		if (menu.mode==MODE_MENU) {
 			if (Pad_justPressed(PAD_UP)) {
@@ -2784,161 +2785,165 @@ static void App_menu(void) {
 		if (menu.quit) break;
 		
 		if (menu.dirty) {
+			dirty = 1;
 			menu.dirty = 0;
+		}
+		
+		if (dirty) {
 			if (preview) {
 				SDL_FreeSurface(preview);
 				preview = NULL;
 			}
-		}
-		
-		char game_name[MAX_FILE];
-		strcpy(game_name, app.items[menu.current].name);
-		
-		Console *console = Console_for(game_name); // requires extension
-		char *dot = strrchr(game_name, '.');
-		if (dot && dot!=game_name) *dot = '\0';
-
-		if (!preview) {
-			char path[MAX_PATH];
-			if (menu.mode==MODE_MENU) {
-				MenuItem item = menu.items[menu.selected]; // won't exist in archive!
 			
-				if (menu.current==app.current) {
-					if (item==ITEM_LOAD) State_getPreviewPath(path, game_name);
-					else if (item!=ITEM_RESET) strcpy(path, SCREENSHOTS_PATH "/current.bmp");
+			char game_name[MAX_FILE];
+			strcpy(game_name, app.items[menu.current].name);
+		
+			Console *console = Console_for(game_name); // requires extension
+			char *dot = strrchr(game_name, '.');
+			if (dot && dot!=game_name) *dot = '\0';
+
+			if (!preview) {
+				char path[MAX_PATH];
+				if (menu.mode==MODE_MENU) {
+					MenuItem item = menu.items[menu.selected]; // won't exist in archive!
+			
+					if (menu.current==app.current) {
+						if (item==ITEM_LOAD) State_getPreviewPath(path, game_name);
+						else if (item!=ITEM_RESET) strcpy(path, SCREENSHOTS_PATH "/current.bmp");
+					}
+					else State_getPreviewPath(path, game_name);
+					if (item==ITEM_RESET || !exists(path)) sprintf(path, ASSETS_PATH "/default-%s.png", console->slug);
 				}
-				else State_getPreviewPath(path, game_name);
-				if (item==ITEM_RESET || !exists(path)) sprintf(path, ASSETS_PATH "/default-%s.png", console->slug);
+				else if (menu.mode==MODE_ARCHIVE) {
+					if (menu.current==app.current) strcpy(path, SCREENSHOTS_PATH "/current.bmp");
+					else State_getPreviewPath(path, game_name);
+					if (!exists(path)) sprintf(path, ASSETS_PATH "/default-%s.png", console->slug);
+				}
+			
+				// LOG("load preview: %s", path);
+			
+				// int w,h;
+				// preview = DOS_LoadTexture(ui.renderer, path);
+				// DOS_QueryTexture(preview, NULL, NULL, &w, &h);
+				// preview_rect = UI_center(w,h);
+			}
+			// if (preview) DOS_RenderCopy(ui.renderer, preview, NULL, &preview_rect);
+			UI_gradient(overlay);
+		
+			Font_shadowText(overlay, font12, console->name, 4,4, LIGHT_COLOR);
+			UI_battery(PWR_getBatteryPercent(), 0, 1);
+
+			// game name
+			char name[MAX_FILE];
+			App_getDisplayName(game_name, name);
+
+			#define MAX_LINES 8
+			char* lines[MAX_LINES];
+			int splits[MAX_LINES] = {0};
+			int line_count = App_wrap(font18, name, MAX_LINES, lines, splits);
+			SDL_Color color = WHITE_COLOR;
+			for (int i=0; i<line_count; i++) {
+				if (splits[i]) color = LIGHT_COLOR;
+				Font_shadowText(overlay, font18, lines[i], 4, 4+18+(i*18), color);
+				free(lines[i]);
+			}
+		
+			int x,y,w,h;
+			int bottom = SCREEN_HEIGHT;
+			if (menu.mode==MODE_MENU) {
+				y = 0;
+				h = SCREEN_HEIGHT;
+		
+				int mw = 0;
+				for (int i=0; i<menu.count; i++) {
+					Font_getTextSize(font12, Menu_getItemName(menu.items[i]), &w, NULL);
+					if (w>mw) mw = w;
+				}
+
+				w = 4 + mw + 4;
+				x = (SCREEN_WIDTH - w) / 2;
+
+				int oh = ((menu.count-1) * 20) + 18;
+				y += (h - oh) / 2;
+				y += 18; // TODO: tmp, quick fix for too high menu
+				h = oh;
+				oh = 20;
+
+				UI_rect(overlay, x-4,y-4,4+w+4,4+h+4, 0, TRIAD_ALPHA(BLACK_TRIAD,0x40));
+
+				for (int i=0; i<menu.count; i++) {
+					Font_renderFunc font_renderer = Font_shadowText;
+					SDL_Color color = WHITE_COLOR;
+
+					if (i==menu.selected) {
+						UI_rect(overlay, x+1,y+(i*oh)+1,w,18, 0, TRIAD_ALPHA(BLACK_TRIAD,0xff));
+						UI_rect(overlay, x,y+(i*oh),w,18, 0, TRIAD_ALPHA(WHITE_TRIAD,0xff));
+						font_renderer = Font_renderText;
+						color = DARK_COLOR;
+					}
+
+					font_renderer(overlay, font12, Menu_getItemName(menu.items[i]), x+4, y+4+(i*oh), color);
+				}
 			}
 			else if (menu.mode==MODE_ARCHIVE) {
-				if (menu.current==app.current) strcpy(path, SCREENSHOTS_PATH "/current.bmp");
-				else State_getPreviewPath(path, game_name);
-				if (!exists(path)) sprintf(path, ASSETS_PATH "/default-%s.png", console->slug);
-			}
-			
-			// LOG("load preview: %s", path);
-			
-			// int w,h;
-			// preview = DOS_LoadTexture(ui.renderer, path);
-			// DOS_QueryTexture(preview, NULL, NULL, &w, &h);
-			// preview_rect = UI_center(w,h);
-		}
-		// if (preview) DOS_RenderCopy(ui.renderer, preview, NULL, &preview_rect);
-		UI_gradient(overlay);
-		
-		Font_shadowText(overlay, font12, console->name, 4,4, LIGHT_COLOR);
-		UI_battery(PWR_getBatteryPercent(), 0, 1);
-
-		// game name
-		char name[MAX_FILE];
-		App_getDisplayName(game_name, name);
-
-		#define MAX_LINES 8
-		char* lines[MAX_LINES];
-		int splits[MAX_LINES] = {0};
-		int line_count = App_wrap(font18, name, MAX_LINES, lines, splits);
-		SDL_Color color = WHITE_COLOR;
-		for (int i=0; i<line_count; i++) {
-			if (splits[i]) color = LIGHT_COLOR;
-			Font_shadowText(overlay, font18, lines[i], 4, 4+18+(i*18), color);
-			free(lines[i]);
-		}
-		
-		int x,y,w,h;
-		int bottom = SCREEN_HEIGHT;
-		if (menu.mode==MODE_MENU) {
-			y = 0;
-			h = SCREEN_HEIGHT;
-		
-			int mw = 0;
-			for (int i=0; i<menu.count; i++) {
-				Font_getTextSize(font12, Menu_getItemName(menu.items[i]), &w, NULL);
-				if (w>mw) mw = w;
-			}
-
-			w = 4 + mw + 4;
-			x = (SCREEN_WIDTH - w) / 2;
-
-			int oh = ((menu.count-1) * 20) + 18;
-			y += (h - oh) / 2;
-			y += 18; // TODO: tmp, quick fix for too high menu
-			h = oh;
-			oh = 20;
-
-			UI_rect(overlay, x-4,y-4,4+w+4,4+h+4, 0, TRIAD_ALPHA(BLACK_TRIAD,0x40));
-
-			for (int i=0; i<menu.count; i++) {
-				Font_renderFunc font_renderer = Font_shadowText;
-				SDL_Color color = WHITE_COLOR;
-
-				if (i==menu.selected) {
-					UI_rect(overlay, x+1,y+(i*oh)+1,w,18, 0, TRIAD_ALPHA(BLACK_TRIAD,0xff));
-					UI_rect(overlay, x,y+(i*oh),w,18, 0, TRIAD_ALPHA(WHITE_TRIAD,0xff));
-					font_renderer = Font_renderText;
-					color = DARK_COLOR;
+				bottom /= 2;
+				// calculate viewport
+				if (app.count<=rows) {
+					top = 0;
 				}
-
-				font_renderer(overlay, font12, Menu_getItemName(menu.items[i]), x+4, y+4+(i*oh), color);
-			}
-		}
-		else if (menu.mode==MODE_ARCHIVE) {
-			bottom /= 2;
-			// calculate viewport
-			if (app.count<=rows) {
-				top = 0;
-			}
-			else {
-				int max = app.count - rows;
-				int bottom = top + rows - 1;
-				if (menu.current<top) top = menu.current;
-				else if (menu.current>bottom) top = menu.current - (rows - 1);
-				if (top<0) top = 0;
-				if (top>max) top = max;
-			}
-			int end = top + rows;
-			if (end>app.count) end = app.count;
+				else {
+					int max = app.count - rows;
+					int bottom = top + rows - 1;
+					if (menu.current<top) top = menu.current;
+					else if (menu.current>bottom) top = menu.current - (rows - 1);
+					if (top<0) top = 0;
+					if (top>max) top = max;
+				}
+				int end = top + rows;
+				if (end>app.count) end = app.count;
 	
-			x = 0;
-			y = bottom;
-			h = 16;
+				x = 0;
+				y = bottom;
+				h = 16;
 			
-			// TODO: fill black?
+				// TODO: fill black?
 			
-			// draw viewport
-			for (int i=top; i<end; i++) {
-				int row = i - top;
-				int oy = y + row * h;
+				// draw viewport
+				for (int i=top; i<end; i++) {
+					int row = i - top;
+					int oy = y + row * h;
 		
-				Entry* item = &app.items[i];
-				SDL_Color c = item->hidden ? LIGHT_COLOR : WHITE_COLOR;
-				if (i==menu.current) {
-					UI_rect(overlay, x,oy,SCREEN_WIDTH,h, 0, c);
-					c = BLACK_COLOR;
+					Entry* item = &app.items[i];
+					SDL_Color c = item->hidden ? LIGHT_COLOR : WHITE_COLOR;
+					if (i==menu.current) {
+						UI_rect(overlay, x,oy,SCREEN_WIDTH,h, 0, c);
+						c = BLACK_COLOR;
+					}
+		
+					char fit[MAX_FILE];
+					App_getDisplayName(item->name, name);
+					App_trunc(font12, name, SCREEN_WIDTH-(16+8), fit);
+		
+					// DOS_RenderCopy(ui.renderer, ui.icons, &(DOS_Rect){item->hidden?24:0,0,24,24}, &(DOS_Rect){x+4,oy+4,24,24});
+					Font_renderText(overlay, font12, fit, x+16,oy+3, c);
 				}
-		
-				char fit[MAX_FILE];
-				App_getDisplayName(item->name, name);
-				App_trunc(font12, name, SCREEN_WIDTH-(16+8), fit);
-		
-				// DOS_RenderCopy(ui.renderer, ui.icons, &(DOS_Rect){item->hidden?24:0,0,24,24}, &(DOS_Rect){x+4,oy+4,24,24});
-				Font_renderText(overlay, font12, fit, x+16,oy+3, c);
 			}
+		
+			if (menu.mode==MODE_MENU) {
+				if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, bottom);
+				else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, bottom);
+			}
+		
+			dirty_overlay();
 		}
-		
-		if (menu.mode==MODE_MENU) {
-			if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, bottom);
-			else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, bottom);
-		}
-		
-		dirty_overlay();
-		
+
 		present_layers(fastforward ? VSYNC_NONE : VSYNC_WAIT);
 	}
 	
 	disable_overlay();
 	Pad_reset();
 }
-static void App_listen(void) {
+static int App_listen(void) {
 	UI_update();
 	
 	static int ignore_menu = 0;
@@ -2998,10 +3003,15 @@ static void App_listen(void) {
 			app.reload = 1;
 		}
 	}
-	else if (!ignore_menu && Pad_justReleased(PAD_MENU)) {
-		if (!ui.menu) App_menu();
-		else Menu_quit();
+	else if (Pad_justReleased(PAD_MENU)) {
+		if (!ignore_menu) {
+			if (!ui.menu) App_menu();
+			else Menu_quit();
+		}
+		else ignore_menu = 0;
 	}
+	
+	return ignore_menu;
 }
 static void App_render(void) {
 	
