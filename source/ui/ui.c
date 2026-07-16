@@ -2692,6 +2692,33 @@ static void App_preview(const char *path) {
 		enable_scaler();
 	}
 }
+static void App_sleep(void) {
+	State_autosave();
+	SRAM_write();
+
+	disable_layers();
+	raw_bri(0);
+	raw_vol(0);
+	CPU_setSpeed(CPU_SPEED_SLEEP);
+
+	int wake = 0;
+	SDL_Event event;
+	while (!wake) {
+		SDL_Delay(200);
+		while (SDL_PollEvent(&event)) {
+			SDLKey key = event.key.keysym.sym;
+			if (event.type==SDL_KEYUP && key==KEYSYM_MENU) {
+				wake = 1;
+			}
+		}
+	}
+
+	CPU_setSpeed(CPU_SPEED_DEFAULT);
+	Settings_setVolume(settings.volume);
+	Settings_setBrightness(settings.brightness);
+	enable_layers();
+	Pad_reset();
+}
 static void App_menu(void) {
 	SDL_SaveBMP(framebuffer, SCREENSHOTS_PATH "/current.bmp");
 	
@@ -2710,6 +2737,13 @@ static void App_menu(void) {
 	while (!menu.quit) {
 		Pad_update();
 		if (App_listen()) dirty = 1;;
+		
+		if (Pad_justReleased(PAD_MENU)) {
+			Pad_consume(PAD_MENU);
+			App_sleep();
+			dirty = 1;
+			menu.dirty = 1;
+		}
 		
 		if (menu.mode==MODE_MENU) {
 			if (Pad_justPressed(PAD_UP)) {
@@ -3051,7 +3085,6 @@ static int App_listen(void) {
 	else if (Pad_justReleased(PAD_MENU)) {
 		if (!ignore_menu) {
 			if (!ui.menu) App_menu();
-			else Menu_quit();
 		}
 		else ignore_menu = 0;
 	}
