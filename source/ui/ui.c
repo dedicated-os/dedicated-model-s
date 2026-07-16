@@ -680,6 +680,14 @@ static void disable_layers(void) {
 	args[1] = LAYER2;
 	if (ioctl(disp_fd, DISP_CMD_LAYER_DISABLE, &args)<0) fprintf(stderr, "LAYER_DISABLE failed %s\n",strerror(errno));
 }
+static void enable_scaler(void) {
+	uint32_t args[4] = {0, LAYER1, 0, 0};
+	ioctl(disp_fd, DISP_CMD_LAYER_ENABLE, &args);
+}
+static void disable_scaler(void) {
+	uint32_t args[4] = {0, LAYER1, 0, 0};
+	ioctl(disp_fd, DISP_CMD_LAYER_DISABLE, &args);
+}
 static void enable_overlay(void) {
 	uint32_t args[4] = {0, LAYER2, 0, 0};
 	ioctl(disp_fd, DISP_CMD_LAYER_ENABLE, &args);
@@ -2666,9 +2674,12 @@ static void App_preview(const char *path) {
 
 	int w = preview->w;
 	int h = preview->h;
+	
+	int disabled = 0;
 
 	if (SCALER_WIDTH!=w || SCALER_HEIGHT!=h) {
-		present_layers(VSYNC_WAIT);
+		disable_scaler();
+		disabled = 1;
 		reinit_layer(w, h);
 	}
 
@@ -2676,6 +2687,10 @@ static void App_preview(const char *path) {
 	SDL_BlitSurface(preview, &(SDL_Rect){0,0,w,h}, scaler, &(SDL_Rect){(SCALER_WIDTH-w)/2,(SCALER_HEIGHT-h)/2});
 	SDL_FreeSurface(preview);
 	dirty_scaler();
+	if (disabled) {
+		present_layers(VSYNC_NONE);
+		enable_scaler();
+	}
 }
 static void App_menu(void) {
 	SDL_SaveBMP(framebuffer, SCREENSHOTS_PATH "/current.bmp");
