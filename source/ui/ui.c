@@ -1505,11 +1505,22 @@ static void UI_extras(void) {
 	if (!ui.icons) ui.icons = IMG_Load(ASSETS_PATH "/icons.png");
 }
 static void UI_setOSD(OSDMode osd) {
+	if (ui.osd==OSD_NONE && osd!=OSD_NONE) {
+		if (!ui.menu) {
+			SDL_FillRect(overlay, NULL, 0);
+			dirty_overlay();
+			present_layers(VSYNC_NONE);
+			enable_overlay();
+		}
+	}
 	ui.osd = osd;
 	ui.osd_at = SDL_GetTicks();
 }
 static void UI_update(void) {
-	if (SDL_GetTicks()>ui.osd_at+1000) ui.osd = OSD_NONE;
+	if (ui.osd!=OSD_NONE && SDL_GetTicks()>ui.osd_at+1000) {
+		ui.osd = OSD_NONE;
+		if (!ui.menu) disable_overlay();
+	}
 }
 
 static void UI_gradient(SDL_Surface *dst) {
@@ -2940,7 +2951,7 @@ static void App_menu(void) {
 		present_layers(fastforward ? VSYNC_NONE : VSYNC_WAIT);
 	}
 	
-	disable_overlay();
+	if (ui.osd==OSD_NONE) disable_overlay();
 	Pad_reset();
 }
 static int App_listen(void) {
@@ -3015,8 +3026,12 @@ static int App_listen(void) {
 }
 static void App_render(void) {
 	
-	if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, SCREEN_HEIGHT);
-	else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, SCREEN_HEIGHT);
+	if (ui.osd!=OSD_NONE) {
+		SDL_FillRect(overlay, NULL, 0);
+		if (ui.osd==OSD_BRIGHTNESS)	UI_OSD("BRIGHTNESS", settings.brightness, 10, SCREEN_HEIGHT);
+		else if (ui.osd==OSD_VOLUME)UI_OSD("VOLUME", settings.volume, 20, SCREEN_HEIGHT);
+		dirty_overlay();
+	}
 
 	present_layers(fastforward ? VSYNC_NONE : VSYNC_WAIT);
 }
