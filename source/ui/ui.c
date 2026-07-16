@@ -251,7 +251,8 @@ static struct {
 	int version;
 	int volume;		// 0-20
 	int brightness;	// 0 - 10
-	int unused[5];
+	int frameskip;
+	int unused[4];
 	char game[MAX_PATH];
 } settings = {
 	.version = 1,
@@ -1715,7 +1716,6 @@ static void log_callback(enum retro_log_level level, const char *fmt, ...) {
 	va_end(args);
 }
 // TODO: move to settings
-static int enable_frameskip = 0;
 static int core_options_dirty = 0;
 static bool environment_callback(unsigned cmd, void *data) {
 	switch (cmd) {
@@ -1764,8 +1764,7 @@ static bool environment_callback(unsigned cmd, void *data) {
 				var->value = "bios"; // TODO: only if present
 			}
 			else if (strcmp(var->key, "gpsp_frameskip") == 0) {
-				// TODO: move to settings
-				var->value = enable_frameskip ? "fixed_interval" : "disabled";
+				var->value = settings.frameskip ? "fixed_interval" : "disabled";
 			}
 			else if (strcmp(var->key, "gpsp_frameskip_interval") == 0) {
 				var->value = "1";
@@ -2983,7 +2982,7 @@ static void App_listen(void) {
 		if (Pad_justPressed(PAD_R1)) {
 			Pad_consume(PAD_R1);
 			ignore_menu = 1;
-			enable_frameskip = !enable_frameskip;
+			settings.frameskip = !settings.frameskip;
 			core_options_dirty =1;
 		}
 		
