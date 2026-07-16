@@ -2657,8 +2657,12 @@ static void App_menu(void) {
 	
 	SDL_Surface *preview = NULL;
 	
-	SDL_FillRect(overlay, NULL, 0);
-	enable_overlay();
+	if (ui.osd==OSD_NONE) {
+		SDL_FillRect(overlay, NULL, 0);
+		dirty_overlay();
+		present_layers(VSYNC_NONE);
+		enable_overlay();
+	}
 	
 	Menu_init();
 	int top = 0;
