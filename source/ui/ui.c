@@ -745,10 +745,6 @@ static inline int round_to_nearest(int value, int n) {
     return (value + n / 2) / n * n;
 }
 static void reinit_layer(int w, int h) {
-	// TODO: w,h must be <= SCREEN_*
-	
-	// TODO: don't resize scaler just resize scale?
-	
 	if (w!=SCALER_WIDTH || h!=SCALER_HEIGHT) {
 		memset(sc_meminfo.vadd, 0, sc_meminfo.size);
 		ion_flush(sc_meminfo.vadd, sc_meminfo.size);
@@ -778,22 +774,15 @@ static void reinit_layer(int w, int h) {
 	if (scale_mode==SCALE_NONE) {
 		scale = (int)scale; // integer
 	}
-	// scale = (float)((int)(scale*2))/2; // nearest 50% scale
 	fprintf(stderr,"reinit_layer %ix%i (%0.2f%%)\n",w,h,scale); fflush(stderr);
 	
 	int sw = round_to_nearest((int)(SCALER_WIDTH * scale + 0.5f), 2);
     int sh = round_to_nearest((int)(SCALER_HEIGHT * scale + 0.5f), 2);
 	
-	// if (scale_mode==SCALE_FULL) {
-	// 	sw = SCREEN_WIDTH;
-	// 	sh = SCREEN_HEIGHT;
-	// }
-
     int ox = round_to_nearest((SCREEN_WIDTH - sw) / 2, 2);
     int oy = round_to_nearest((SCREEN_HEIGHT - sh) / 2, 2);
 	
 	resize_scaler(ox,oy,sw,sh);
-	// resize_scaler(0,0,SCREEN_WIDTH,SCREEN_HEIGHT); // fullscreen
 }
 
 // --------------------------------------------
