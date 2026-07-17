@@ -243,6 +243,9 @@ static void CPU_setSpeed(uint32_t mhz) {
 #define GREEN_COLOR		TRIAD_ALPHA(GREEN_TRIAD,0xff)
 #define YELLOW_COLOR	TRIAD_ALPHA(YELLOW_TRIAD,0xff)
 
+#define ARGB8888_MASKS	0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
+#define RGB565_MASKS 	0xF800, 0x07E0, 0x001F, 0x0000
+
 // --------------------------------------------
 // settings
 // --------------------------------------------
@@ -615,10 +618,8 @@ static void setup_layers(void) {
 	memset(ov_meminfo.vadd, 0, ov_meminfo.size);
 	ion_flush(ov_meminfo.vadd, ov_meminfo.size);
 	
-	scaler = SDL_CreateRGBSurfaceFrom(sc_meminfo.vadd + SCALER_WIDTH*SCALER_HEIGHT*4, SCALER_WIDTH, SCALER_HEIGHT,
-			32, SCALER_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
-	overlay = SDL_CreateRGBSurfaceFrom(ov_meminfo.vadd + SCREEN_WIDTH*SCREEN_HEIGHT*4, SCREEN_WIDTH, SCREEN_HEIGHT,
-			32, SCREEN_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+	scaler  = SDL_CreateRGBSurfaceFrom(sc_meminfo.vadd + SCALER_WIDTH*SCALER_HEIGHT*4, SCALER_WIDTH, SCALER_HEIGHT, 32, SCALER_WIDTH*4, ARGB8888_MASKS);
+	overlay = SDL_CreateRGBSurfaceFrom(ov_meminfo.vadd + SCREEN_WIDTH*SCREEN_HEIGHT*4, SCREEN_WIDTH, SCREEN_HEIGHT, 32, SCREEN_WIDTH*4, ARGB8888_MASKS);
 	
 	// setup layer for scaler: use layer 1
 	memset(&sc_info, 0, sizeof(sc_info));
@@ -766,8 +767,7 @@ static void reinit_layer(int w, int h) {
 	SCALER_WIDTH = w;
 	SCALER_HEIGHT = h;
 	SDL_FreeSurface(scaler);
-	scaler = SDL_CreateRGBSurfaceFrom(sc_meminfo.vadd + SCALER_WIDTH*SCALER_HEIGHT*4, SCALER_WIDTH, SCALER_HEIGHT,
-			32, SCALER_WIDTH*4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+	scaler = SDL_CreateRGBSurfaceFrom(sc_meminfo.vadd + SCALER_WIDTH*SCALER_HEIGHT*4, SCALER_WIDTH, SCALER_HEIGHT, 32, SCALER_WIDTH*4, ARGB8888_MASKS);
 	
 	uint32_t args[4] = {0, LAYER1, (uintptr_t)&sc_info, 0};
 	sc_info.fb.size.width = SCALER_WIDTH;		// framebuffer.w
@@ -1915,7 +1915,7 @@ static void video_refresh_callback(const void *data, unsigned width, unsigned he
 	}
 	
 	if (!framebuffer) {
-		framebuffer = SDL_CreateRGBSurfaceFrom(NULL, width, height, 16, pitch, 0xF800, 0x07E0, 0x001F, 0x0000);
+		framebuffer = SDL_CreateRGBSurfaceFrom(NULL, width, height, 16, pitch, RGB565_MASKS);
 		reinit_layer(width, height);
 	}
 	
