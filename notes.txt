@@ -1,6 +1,11 @@
+font12
+	add arrows
+	those are beyond ascii...
+	how to handle?
+		repurposed unprintable bytes
+empty view
 bootlogo
 	create
-	auto installer
 installer
 	hijack
 check SD for changes to main.sh

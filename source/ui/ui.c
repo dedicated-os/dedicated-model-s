@@ -802,6 +802,11 @@ static void reinit_layer(int w, int h) {
 // custom fonts
 // --------------------------------------------
 
+#define CHAR_UP		"\x11"
+#define CHAR_DOWN	"\x12"
+#define CHAR_LEFT	"\x13"
+#define CHAR_RIGHT	"\x14"
+
 typedef struct {
 	uint8_t map[128];
 	uint8_t char_widths[128];
@@ -856,7 +861,7 @@ static Font* font18 = &(Font){
 
 static Font* font12 = &(Font){
 	.name = "font-dedicated-12.png",
-	.charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-'!?&0123456789/$+%,: ",
+	.charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-'!?&0123456789/$+%,:" CHAR_UP CHAR_DOWN CHAR_LEFT CHAR_RIGHT " ",
 	.tile_width = 12,
 	.tile_height = 12,
 	.tracking = 2,
@@ -901,6 +906,17 @@ static Font* font10 = &(Font){
 		['!'] = 2,
 		[':'] = 2,
 		[' '] = 2,
+	},
+	.kern_pairs = {
+		['A']['T'] = -1,
+		['T']['A'] = -1,
+		['A']['V'] = -1,
+		['V']['A'] = -1,
+		['A']['W'] = -1,
+		['W']['A'] = -1,
+		['F']['A'] = -1,
+		['T']['-'] = -1,
+		['-']['T'] = -1,
 	},
 };
 
