@@ -1,3 +1,16 @@
 #!/bin/sh
 
-# TODO: iirc should be a simple mount /mnt/BOOT and copy over
+BOOT_DEV=/dev/by-name/bootlogo
+BOOT_LOGO=/mnt/SDCARD/bootlogo.bmp
+BOOT_LAST=/mnt/SDCARD/userdata/bootlogo.txt
+
+[ ! -f $BOOT_LOGO ] && exit
+
+NEW_SUM=$(md5sum $BOOT_LOGO | awk '{print $1}')
+OLD_SUM=$(cat $BOOT_LAST 2>/dev/null || true)
+
+[ $NEW_SUM = $OLD_SUM ] && exit
+
+dd if=$BOOT_LOGO of=$BOOT_DEV bs=65536
+echo $NEW_SUM > $BOOT_LAST
+sync
