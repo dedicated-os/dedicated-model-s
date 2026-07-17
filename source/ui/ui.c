@@ -226,7 +226,7 @@ static void CPU_setSpeed(uint32_t mhz) {
 
 #define BLACK_TRIAD 	0x00,0x00,0x00
 #define WHITE_TRIAD 	0xff,0xff,0xff
-#define LIGHT_TRIAD 	0x99,0x99,0x99
+#define LIGHT_TRIAD 	0xba,0xba,0xba
 #define DARK_TRIAD 		0x33,0x33,0x33
 #define MID_TRIAD 		0x44,0x44,0x44
 #define RED_TRIAD		0xff,0x33,0x33
@@ -878,14 +878,14 @@ static Font* font12 = &(Font){
 		[' '] = 4,
 	},
 	.kern_pairs = {
-		['A']['T'] = -1,
-		['T']['A'] = -1,
-		['A']['V'] = -1,
-		['V']['A'] = -1,
+		['A']['T'] = -2,
+		['T']['A'] = -2,
+		['A']['V'] = -2,
+		['V']['A'] = -2,
 		['A']['W'] = -1,
 		['W']['A'] = -1,
-		['T']['-'] = -1,
-		['-']['T'] = -1,
+		['T']['-'] = -2,
+		['-']['T'] = -2,
 	},
 };
 
@@ -1551,7 +1551,17 @@ static void UI_update(void) {
 	}
 }
 
-static void UI_gradient(SDL_Surface *dst) {
+static inline uint32_t UI_blendPixel(uint32_t src, uint32_t dst) {
+	if ((dst >> 24) == 0) return src;
+
+	uint8_t a = src >> 24;
+	uint32_t rb = ((src & 0x00FF00FF) * a + (dst & 0x00FF00FF) * (255 - a)) >> 8;
+	uint32_t g  = ((src & 0x0000FF00) * a + (dst & 0x0000FF00) * (255 - a)) >> 8;
+	uint8_t out_a = a + ((dst >> 24) * (255 - a)) / 255;
+
+	return (out_a << 24) | (rb & 0x00FF00FF) | (g & 0x0000FF00);
+}
+static void UI_gradientFilled(SDL_Surface *dst, uint32_t color) {
 	// quantized 8x8 Bayer matrix
 	static const int8_t dither[8][8] = {
 		{ -4,  2, -3,  3, -4,  2, -3,  3 },
@@ -1563,16 +1573,25 @@ static void UI_gradient(SDL_Surface *dst) {
 		{ -3,  3, -4,  2, -3,  3, -4,  2 },
 		{  1, -1,  0, -2,  1, -1,  0, -2 },
 	};
-
+	
 	uint32_t* pixels = dst->pixels;
 	int w = dst->w;
 	int h = dst->h;
 	for (int y = 0; y < h; y++) {
 		int base = 64 + ((h - y) * 160 / h);
 		for (int x = 0; x < w; x++, pixels++) {
-			*pixels = (uint32_t)(base + dither[y & 7][x & 7]) << 24;
+			uint32_t a = (uint32_t)(base + dither[y & 7][x & 7]);
+			if (color) {
+				uint32_t src = a << 24;
+				uint32_t dst = 0xff000000 | (color & 0x00ffffff);
+				*pixels = UI_blendPixel(src, dst);
+			}
+			else *pixels = a << 24;
 		}
 	}
+}
+static void UI_gradient(SDL_Surface *dst) {
+	UI_gradientFilled(dst, 0);
 }
 static void UI_fillRect(SDL_Surface* dst, int x, int y, int w, int h, SDL_Color c) {
 	if (w <= 0 || h <= 0) return;
@@ -1611,16 +1630,6 @@ static void UI_fillRect(SDL_Surface* dst, int x, int y, int w, int h, SDL_Color 
 			memcpy(row0 + row * pitch, row0, row_bytes);
 		}
 	}
-}
-static inline uint32_t UI_blendPixel(uint32_t src, uint32_t dst) {
-	if ((dst >> 24) == 0) return src;
-
-	uint8_t a = src >> 24;
-	uint32_t rb = ((src & 0x00FF00FF) * a + (dst & 0x00FF00FF) * (255 - a)) >> 8;
-	uint32_t g  = ((src & 0x0000FF00) * a + (dst & 0x0000FF00) * (255 - a)) >> 8;
-	uint8_t out_a = a + ((dst >> 24) * (255 - a)) / 255;
-
-	return (out_a << 24) | (rb & 0x00FF00FF) | (g & 0x0000FF00);
 }
 static void UI_rect(SDL_Surface* dst, int x, int y, int w, int h, int s, SDL_Color c) {
 	if (w <= 0 || h <= 0) return;
@@ -3068,6 +3077,99 @@ static void DateTime_render(void) {
 	}
 }
 
+static void App_bootlogo(void) {
+	int bootlogo = 1;
+	int dirty = 1;
+	
+	const char *hints[] = {
+		"Volume", "MENU+" CHAR_LEFT "/" CHAR_RIGHT,
+		"Frame Skip",	"MENU+L",
+		"Brightness", "MENU+" CHAR_UP "/" CHAR_DOWN,
+		"Fast Forward", "MENU+R",
+		NULL,
+	};
+	
+	Pad_reset();
+	Device_poke();
+	
+	while (bootlogo) {
+		Pad_update();
+		
+		if (App_listen()) dirty = 1;
+		if (Device_autosleep()) dirty = 1;
+		
+		if (Pad_justPressed(PAD_B)) {
+			bootlogo = 0;
+			break;
+		}
+		
+		if (dirty) {
+			dirty = 0;
+			UI_gradientFilled(overlay, 0xFF555555);
+			Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
+			Font_shadowText(overlay, font18, "Game Boy Micro", 4, 4+18, WHITE_COLOR);
+			
+			int lw = 0;
+			int rw = 0;
+			
+			int rows = 4;
+			int r = rows / 2;
+			int oh = 22 * r + 14 * (r-1);
+			
+			// layout pass
+			for (int i = 0; hints[i] != NULL; i += 2) {
+				const char *hint = hints[i];
+				const char *trigger = hints[i + 1];
+				
+				int w,h;
+				Font_getTextSize(font10, hint, &w, &h);
+				if (i<rows && w>lw) lw = w; // left
+				else if (i>=rows && w>rw) rw = w; // right
+				
+				Font_getTextSize(font12, trigger, &w, &h);
+				if (i<rows && w>lw) lw = w; // left
+				else if (i>=rows && w>rw) rw = w; // right
+			}
+			
+			int pad = (SCREEN_WIDTH - lw - rw) / 3;
+			int ox = pad;
+			// int oy = 40 + (SCREEN_HEIGHT - 40 - oh) / 2;
+			int oy = SCREEN_HEIGHT - pad - oh;
+			
+			int x = ox;
+			int y = oy;
+			
+			// render pass
+			for (int i = 0; hints[i] != NULL; i += 2) {
+				const char *hint = hints[i];
+				const char *trigger = hints[i + 1];
+				
+				if (i==rows) {
+					x = ox + lw + pad;
+					y = oy;
+				}
+				
+				Font_shadowText(overlay, font10, hint, x,y, LIGHT_COLOR);
+				Font_shadowText(overlay, font12, trigger, x,y+12, WHITE_COLOR);
+				
+				y += 36;
+			}
+			
+			dirty_overlay();
+		}
+
+		if (app.capture) App_capture();
+		present_layers(VSYNC_WAIT);
+
+		if (Pad_justPressed(PAD_SELECT)) {
+			app.capture = 1;
+			dirty = 1;
+		}
+	}
+	
+	Pad_reset();
+}
+
 static void App_preview(const char *path) {
 	SDL_Surface *preview = IMG_Load(path);
 	if (!preview) return;
@@ -3190,6 +3292,11 @@ static void App_menu(void) {
 				DateTime_init();
 				menu.mode = MODE_DATETIME;
 				menu.dirty = 1;
+			}
+			
+			if (Pad_justPressed(PAD_START)) {
+				App_bootlogo();
+				Pad_reset();
 			}
 		}
 		else if (menu.mode==MODE_ARCHIVE) {
