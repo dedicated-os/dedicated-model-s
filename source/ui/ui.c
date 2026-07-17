@@ -884,12 +884,32 @@ static Font* font12 = &(Font){
 	},
 };
 
+static Font* font10 = &(Font){
+	.name = "font-dedicated-10.png",
+	.charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-'!?&0123456789/$+%,: ",
+	.tile_width = 10,
+	.tile_height = 10,
+	.tracking = 2,
+	.char_width = 8,
+	.char_widths = {
+		['I'] = 2,
+		['1'] = 5,
+		['.'] = 2,
+		[','] = 2,
+		['-'] = 6,
+		['\''] = 2,
+		['!'] = 2,
+		[':'] = 2,
+		[' '] = 2,
+	},
+};
+
 static Font* font6 = &(Font){
 	.name = "font-dedicated-6.png",
 	.charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-'!?&0123456789/$+%,: ",
 	.tile_width = 6,
 	.tile_height = 6,
-	.tracking = 1,
+	.tracking = 2,
 	.char_width = 5,
 	.char_widths = {
 		['I'] = 2,
@@ -899,7 +919,6 @@ static Font* font6 = &(Font){
 		['-'] = 4,
 		['\''] = 2,
 		['!'] = 2,
-		['1'] = 4,
 		[':'] = 2,
 		[' '] = 2,
 	},
@@ -1095,11 +1114,13 @@ static void Font_shadowText(SDL_Surface* dst, Font* font, const char* text, int 
 static void Fonts_init(void) {
 	Font_init(font18);
 	Font_init(font12);
+	Font_init(font10);
 	Font_init(font6);
 }
 static void Fonts_quit(void) {
 	Font_quit(font18);
 	Font_quit(font12);
+	Font_quit(font10);
 	Font_quit(font6);
 }
 
@@ -1743,21 +1764,21 @@ static void UI_battery(int battery, int is_charging, int shadowed) {
 static void UI_OSD(char* label, int value, int max, int bottom) {
 	int nh = 14;
 	int x,y,w,h;
-	Font_getTextSize(font6, label, &w, &h);
+	Font_getTextSize(font10, label, &w, &h);
 	w = 106;
-	h = 31;
+	h = 34;
 	x = (SCREEN_WIDTH - w) / 2;
 	y = (bottom - h) - 4;
 	
 	UI_rect(overlay, x,y,w,h, 0, TRIAD_ALPHA(BLACK_TRIAD,0x60));
 
-	Font_shadowText(overlay, font6, label, x+4, y+4, LIGHT_COLOR);
+	Font_shadowText(overlay, font10, label, x+4, y+4, LIGHT_COLOR);
 	
 	int nw = max==10?8:3;
 	int no = max==10?10:5;
 	for (int i=0; i<max; i++) {
 		int nx = x + 4;
-		int ny = y + 13;
+		int ny = y + 16;
 		UI_rect(overlay, nx+i*no+1,ny+1,nw,nh, 0, BLACK_COLOR);
 		if (i<value) {
 			UI_rect(overlay, nx+i*no,ny,nw,nh, 0, WHITE_COLOR);
@@ -3433,17 +3454,19 @@ static int App_listen(void) {
 			}
 		}
 		
-		if (Pad_justPressed(PAD_L1)) {
-			Pad_consume(PAD_L1);
-			ignore_menu = 1;
-			settings.frameskip = !settings.frameskip;
-			core_options_dirty =1;
-		}
+		if (!ui.menu) {
+			if (Pad_justPressed(PAD_L1)) {
+				Pad_consume(PAD_L1);
+				ignore_menu = 1;
+				settings.frameskip = !settings.frameskip;
+				core_options_dirty =1;
+			}
 		
-		if (Pad_justPressed(PAD_R1)) {
-			Pad_consume(PAD_R1);
-			ignore_menu = 1;
-			fastforward = !fastforward;
+			if (Pad_justPressed(PAD_R1)) {
+				Pad_consume(PAD_R1);
+				ignore_menu = 1;
+				fastforward = !fastforward;
+			}
 		}
 		
 		if (Pad_justPressed(PAD_START)) {
