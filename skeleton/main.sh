@@ -16,5 +16,8 @@ fi
 # update bootlogo if changed
 bootlogo
 
+# cycle log
+[ ! -f /tmp/ui.txt ] || mv /tmp/ui.txt /tmp/ui-last.txt
+
 # frontend
-ui
+ui > /tmp/ui.txt 2>&1

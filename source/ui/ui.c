@@ -2500,7 +2500,17 @@ static int App_sort(const void* a, const void* b) {
 }
 
 static void App_empty(void) {
-	LOG("TODO: empty");
+	LOG("App_empty");
+	
+	UI_gradientFilled(overlay, 0xFF555555);
+	Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
+	Font_shadowText(overlay, font18, "No games found", 4, 4+18, WHITE_COLOR);
+	dirty_overlay();
+	enable_overlay();
+	
+	while(1) {
+		present_layers(VSYNC_WAIT);
+	}
 }
 
 static void App_set(int i) {
