@@ -16,7 +16,7 @@ screenshots
 4. Format a second card as FAT32 (MBR).
 5. Download and unzip the `dedicated-model-s` zip file below.
 6. Copy its contents to the root of your freshly formatted SD card.
-7. Now add your games and bios to the SD card (the games you won't be playing immediately can go in `/games/archive` to hide them for now).
+7. Add your games and bios to the SD card (the games you won't be playing immediately can go in `/games/archive` to hide them for now).
 8. Enjoy!
 
 [main]: https://github.com/dedicated-os/main-model-s/releases/latest

@@ -1766,7 +1766,7 @@ static void UI_bolt(SDL_Surface* dst, int x, int y, SDL_Color c) {
 }
 static void UI_bat(SDL_Surface* dst, int x, int y, int battery, SDL_Color c) {
 	UI_rect(dst, x,y, 20,14, 2, c);
-	UI_rect(dst, x+20,y+4, 2,6, 2, c);
+	UI_fillRect(dst, x+20,y+4, 2,6, c);
 	
 	int w = CEIL_TO(battery,20) * 12 / 100;
 	if (w>0) UI_fillRect(dst, x+4,y+4,w,6, c);
@@ -3175,10 +3175,10 @@ static void App_bootlogo(void) {
 		if (app.capture) App_capture();
 		present_layers(VSYNC_WAIT);
 
-		if (Pad_justPressed(PAD_SELECT)) {
-			app.capture = 1;
-			dirty = 1;
-		}
+		// if (Pad_justPressed(PAD_R1)) {
+		// 	app.capture = 1;
+		// 	dirty = 1;
+		// }
 	}
 	
 	Pad_reset();
@@ -3538,6 +3538,11 @@ static void App_menu(void) {
 		
 		if (app.capture) App_capture();
 		present_layers(VSYNC_WAIT);
+		
+		// if (Pad_justPressed(PAD_R1)) {
+		// 	app.capture = 1;
+		// 	dirty = 1;
+		// }
 	}
 	
 	if (ui.osd==OSD_NONE) disable_overlay();
