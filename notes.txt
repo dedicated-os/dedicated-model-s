@@ -1,4 +1,22 @@
-installer
-	hijack
-frameskip
-	should it have an icon?
+readme
+screenshots
+
+-----------------------------------------------
+
+# Updating
+
+1. Download the `dedicated-model-s` zip file below.
+2. Unzip the downloaded zip file and copy just system.zip to the root of your SD card.
+
+# Installing
+
+1. Download the latest [main-model-s] zip file ("trimui_main-*.zip").
+2. Copy without unzipping to the root of your stock SD card.
+3. Launch from FILE (if it does not appear, replace "trimui" with "TrimuiUpdate" in the filename).
+4. Format a second card as FAT32 (MBR).
+5. Download and unzip the `dedicated-model-s` zip file below.
+6. Copy its contents to the root of your freshly formatted SD card.
+7. Now add your games and bios to the SD card (the games you won't be playing immediately can go in `/games/archive` to hide them for now).
+8. Enjoy!
+
+[main]: https://github.com/dedicated-os/main-model-s/releases/latest

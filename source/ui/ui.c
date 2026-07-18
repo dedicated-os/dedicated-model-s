@@ -24,6 +24,7 @@
 #include "libretro.h"
 
 // old globals
+static int has_frameskip = 0;
 static int fastforward = 0; // TODO: move to app?
 
 // --------------------------------------------
@@ -1872,6 +1873,7 @@ static bool environment_callback(unsigned cmd, void *data) {
 				var->value = "bios"; // TODO: only if present
 			}
 			else if (strcmp(var->key, "gpsp_frameskip") == 0) {
+				has_frameskip = 1;
 				var->value = settings.frameskip ? "fixed_interval" : "disabled";
 			}
 			else if (strcmp(var->key, "gpsp_frameskip_interval") == 0) {
@@ -2178,6 +2180,8 @@ static void State_resume(void) {
 // --------------------------------------------
 
 static void Core_open(void) {
+	has_frameskip = 0;
+	
 	LOG("core: open");
 	
 	core.handle = dlopen(core.path, RTLD_LAZY);
@@ -3629,6 +3633,7 @@ static void App_render(void) {
 	static int last_osd = -1;
 	static int last_bri = -1;
 	static int last_vol = -1;
+	static int last_skip = -1;
 	
 	if (invalidate_overlay) {
 		invalidate_overlay = 0;
@@ -3636,10 +3641,11 @@ static void App_render(void) {
 		last_ff = -1;
 	}
 
-	int show_overlay = fastforward || ui.osd != OSD_NONE;
+	int show_overlay = fastforward || (has_frameskip && settings.frameskip) || ui.osd != OSD_NONE;
 	int changed =
 		fastforward != last_ff ||
 		ui.osd != last_osd ||
+		settings.frameskip != last_skip ||
 		settings.brightness != last_bri ||
 		settings.volume != last_vol;
 
@@ -3648,12 +3654,17 @@ static void App_render(void) {
 		last_osd = ui.osd;
 		last_bri = settings.brightness;
 		last_vol = settings.volume;
+		last_skip = settings.frameskip;
 
 		if (show_overlay) {
 			SDL_FillRect(overlay, NULL, 0);
 
 			if (fastforward) {
 				UI_blit(ui.icons, &(SDL_Rect){24,0,12,12}, overlay, &(SDL_Rect){2,2,12,12});
+			}
+			
+			if (has_frameskip && settings.frameskip) {
+				UI_blit(ui.icons, &(SDL_Rect){36,0,12,12}, overlay, &(SDL_Rect){SCREEN_WIDTH-2-12,2,12,12});
 			}
 
 			if (ui.osd == OSD_BRIGHTNESS) {
