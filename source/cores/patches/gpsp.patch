@@ -1,8 +1,8 @@
 diff --git forkSrcPrefix/Makefile forkDstPrefix/Makefile
-index dc4b60dec7f70a153dbc2eb849cd5acfc90f9d4d..9e2ce790d8b8c72fd3160f8f2e8be1b9aa1d7cc1 100644
+index f5e3bf2e347c24fdc6bea0b9149ba867ed0c1abf..5a3f2817f7f520e5460aedecdeb90a2e16cda68d 100644
 --- forkSrcPrefix/Makefile
 +++ forkDstPrefix/Makefile
-@@ -524,6 +524,18 @@ else ifeq ($(platform), miyoomini)
+@@ -536,6 +536,19 @@ else ifeq ($(platform), miyoomini)
  	ARCH = arm
  	BUILTIN_GPU = neon
  
@@ -14,6 +14,7 @@ index dc4b60dec7f70a153dbc2eb849cd5acfc90f9d4d..9e2ce790d8b8c72fd3160f8f2e8be1b9
 +  AR  = $(CROSS_COMPILE)ar
 +  fpic := -fPIC -DPIC
 +  SHARED := -shared -nostdlib -Wl,-version-script=link.T
++  CFLAGS += -fomit-frame-pointer -ffast-math -march=armv5te -mtune=arm926ej-s
 +  CFLAGS += -DSMALL_TRANSLATION_CACHE
 +  HAVE_DYNAREC := 1
 +  CPU_ARCH := arm
