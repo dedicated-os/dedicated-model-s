@@ -1,15 +1,15 @@
-CHANGELOG
-
-- tuned gpsp core for arm9
-- added licenses and commits.txt to releases
-
------------------------------------------------
-
 TODO
 
 - rewrite Powering Off section of README
 
 -----------------------------------------------
+RELEASE CONTENT
+-----------------------------------------------
+
+# Changes
+
+- tuned gpsp core for arm9
+- added licenses and commits.txt to releases
 
 # Updating
 
@@ -28,3 +28,8 @@ TODO
 8. Enjoy!
 
 [main]: https://github.com/dedicated-os/main-model-s/releases/latest
+
+-----------------------------------------------
+
+> [!CAUTION]
+> This release is out of date. [Download the latest instead.](https://github.com/dedicated-os/dedicated-model-s/releases/latest)
