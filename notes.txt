@@ -1,5 +1,14 @@
-readme
-screenshots
+CHANGELOG
+
+- revised volume and brightness ramps
+- swapped frame skip and fast forward icons (to match corresponding shoulder button placement)
+
+-----------------------------------------------
+
+TODO
+
+- revert gambatte to pokemini palette not bivert?
+- rewrite Powering Off section of README
 
 -----------------------------------------------
 
@@ -10,9 +19,9 @@ screenshots
 
 # Installing
 
-1. Download the latest [main-model-s] zip file ("trimui_main-*.zip").
+1. Download the latest [main-model-s][main] zip file ("trimui_main-*.zip").
 2. Copy without unzipping to the root of your stock SD card.
-3. Launch from FILE (if it does not appear, replace "trimui" with "TrimuiUpdate" in the filename).
+3. Launch from FILE (if it does not appear you're on an older firmware, replace "trimui" in the filename with "TrimuiUpdate").
 4. Format a second card as FAT32 (MBR).
 5. Download and unzip the `dedicated-model-s` zip file below.
 6. Copy its contents to the root of your freshly formatted SD card.

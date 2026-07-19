@@ -287,11 +287,55 @@ static void Settings_save(void) {
 	sync();
 }
 static void Settings_setVolume(int value) {
-	raw_vol(value * 5);
+	static const uint8_t raw[21] = {
+		  0, // mute
+		 20, // 20
+		 32, // 12
+		 40, // 8
+		 45, // 5
+		 50, // 5
+		 55, // 5
+		 60, // 5
+		 64, // 4
+		 68, // 4
+		 72, // 4
+		 75, // 3
+		 78, // 3
+		 81, // 3
+		 84, // 3
+		 87, // 3
+		 90, // 3
+		 92, // 2
+		 95, // 3
+		 97, // 2
+		100, // 3
+	};
+
+	if (value < 0) value = 0;
+	else if (value > 20) value = 20;
+
+	raw_vol(raw[value]);
 	settings.volume = value;
 }
 static void Settings_setBrightness(int value) {
-	raw_bri(70 + (value * 5));
+	static const uint8_t raw[11] = {
+		 70, // 0
+		 73, // 3
+		 76, // 3
+		 79, // 3
+		 82, // 3
+		 85, // 3
+		 88, // 3
+		 92, // 4
+		 96, // 4
+		100, // 4
+		105, // 5
+	};
+
+	if (value < 0) value = 0;
+	else if (value > 10) value = 10;
+
+	raw_bri(raw[value]);
 	settings.brightness = value;
 }
 
@@ -3665,11 +3709,11 @@ static void App_render(void) {
 			SDL_FillRect(overlay, NULL, 0);
 
 			if (fastforward) {
-				UI_blit(ui.icons, &(SDL_Rect){24,0,12,12}, overlay, &(SDL_Rect){2,2,12,12});
+				UI_blit(ui.icons, &(SDL_Rect){24,0,12,12}, overlay, &(SDL_Rect){SCREEN_WIDTH-2-12,2,12,12});
 			}
 			
 			if (has_frameskip && settings.frameskip) {
-				UI_blit(ui.icons, &(SDL_Rect){36,0,12,12}, overlay, &(SDL_Rect){SCREEN_WIDTH-2-12,2,12,12});
+				UI_blit(ui.icons, &(SDL_Rect){36,0,12,12}, overlay, &(SDL_Rect){2,2,12,12});
 			}
 
 			if (ui.osd == OSD_BRIGHTNESS) {
