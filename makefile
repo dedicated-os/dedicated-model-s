@@ -20,11 +20,19 @@ setup:
 build:
 	cd source/ui && make
 	cd source/cores && make
+
+licenses:
+	mkdir -p ./build/system/licenses
+	cp LICENSE.md ./build/system/licenses/dedicated-os.txt
+	cp ./source/cores/src/gambatte/COPYING ./build/system/licenses/gambatte.txt
+	cp ./source/cores/src/gpsp/COPYING ./build/system/licenses/gpsp.txt
+	cp ./source/cores/src/pokemini/LICENSE ./build/system/licenses/pokemini.txt
 	
-package:
+package: licenses
 	cp source/ui/build/ui.elf ./build/system/bin/ui
 	cp source/cores/build/*.so ./build/system/cores/
 	cd ./build/system && echo "$(RELEASE_NAME)\n$(BUILD_HASH)" > version.txt
+	./commits.sh > ./build/system/commits.txt
 	cd ./build && find . -type f -name '.DS_Store' -delete
 	cd ./build && zip -r system.zip system && rm -rf system
 	cd ./build && zip -r ../releases/$(RELEASE_NAME).zip .

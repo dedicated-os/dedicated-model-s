@@ -1,12 +1,12 @@
 CHANGELOG
 
 - tuned gpsp core for arm9
+- added licenses and commits.txt to releases
 
 -----------------------------------------------
 
 TODO
 
-- copy core license to release (system/licenses/?)
 - rewrite Powering Off section of README
 
 -----------------------------------------------
