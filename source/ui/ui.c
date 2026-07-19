@@ -1868,7 +1868,6 @@ static void log_callback(enum retro_log_level level, const char *fmt, ...) {
 	vfprintf(stdout, fmt, args);
 	va_end(args);
 }
-// TODO: move to settings
 static int core_options_dirty = 0;
 static bool environment_callback(unsigned cmd, void *data) {
 	switch (cmd) {

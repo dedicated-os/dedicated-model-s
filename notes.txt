@@ -10,6 +10,7 @@ CHANGELOG
 
 TODO
 
+- copy core license to release (system/licenses/?)
 - rewrite Powering Off section of README
 
 -----------------------------------------------
