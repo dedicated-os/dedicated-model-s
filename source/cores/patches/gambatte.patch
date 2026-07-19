@@ -1,8 +1,8 @@
 diff --git forkSrcPrefix/Makefile.libretro forkDstPrefix/Makefile.libretro
-index ffaba21e7a88f90786d818ab550b68acd05738bf..2cceeea1d3be410a54356e5953008cb1f2f2f367 100644
+index 184253889bf1bf7fb2afae4b7f60e2c21f32d967..05735f0a1491fc29dfd80449a7b329cf2d3fe886 100644
 --- forkSrcPrefix/Makefile.libretro
 +++ forkDstPrefix/Makefile.libretro
-@@ -404,6 +404,19 @@ else ifeq ($(platform), miyoo)
+@@ -409,6 +409,19 @@ else ifeq ($(platform), miyoo)
     PLATFORM_DEFINES := -DDINGUX
     CFLAGS += -fomit-frame-pointer -ffast-math -march=armv5te -mtune=arm926ej-s
     CXXFLAGS += $(CFLAGS)
@@ -22,3 +22,71 @@ index ffaba21e7a88f90786d818ab550b68acd05738bf..2cceeea1d3be410a54356e5953008cb1
  
  # Windows MSVC 2003 Xbox 1
  else ifeq ($(platform), xbox1_msvc2003)
+diff --git forkSrcPrefix/libgambatte/libretro/libretro.cpp forkDstPrefix/libgambatte/libretro/libretro.cpp
+index 15b042cc291c675d90ba5481a112ec1742086084..fed178ecbb43db37ae58b4600833cc9864957cd1 100644
+--- forkSrcPrefix/libgambatte/libretro/libretro.cpp
++++ forkDstPrefix/libgambatte/libretro/libretro.cpp
+@@ -2009,7 +2009,7 @@ static enum gb_colorization_enable_type gb_colorization_enable = GB_COLORIZATION
+ static std::string rom_path;
+ static char internal_game_name[17];
+ 
+-static void load_custom_palette(void)
++static bool load_custom_palette(void)
+ {
+    const char *system_dir = NULL;
+    const char *rom_file   = NULL;
+@@ -2028,7 +2028,7 @@ static void load_custom_palette(void)
+    {
+       gambatte_log(RETRO_LOG_WARN,
+             "No system directory defined, unable to look for custom palettes.\n");
+-      return;
++      return false;
+    }
+ 
+    /* Look for palette named after ROM file */
+@@ -2073,7 +2073,7 @@ static void load_custom_palette(void)
+    }
+ 
+    if (!path_valid)
+-      return; /* Unable to find any custom palette file */
++      return false; /* Unable to find any custom palette file */
+ 
+    palette_file = filestream_open(palette_path,
+          RETRO_VFS_FILE_ACCESS_READ,
+@@ -2083,7 +2083,7 @@ static void load_custom_palette(void)
+    {
+       gambatte_log(RETRO_LOG_WARN,
+             "Failed to open custom palette: %s\n", palette_path);
+-      return;
++      return false;
+    }
+ 
+    gambatte_log(RETRO_LOG_INFO, "Using custom palette: %s\n", palette_path);
+@@ -2188,6 +2188,7 @@ palette_line_end:
+    }
+ 
+    filestream_close(palette_file);
++   return true;
+ }
+ 
+ static void find_internal_palette(const unsigned short **palette, bool *is_gbc)
+@@ -2534,6 +2535,9 @@ static void check_variables(bool startup)
+ 
+    switch (gb_colorization_enable)
+    {
++      case GB_COLORIZATION_CUSTOM:
++          if (load_custom_palette()) break;
++		  gb_colorization_enable = GB_COLORIZATION_AUTO;
+       case GB_COLORIZATION_AUTO:
+          // Automatic colourisation
+          // Order of preference:
+@@ -2579,9 +2583,6 @@ static void check_variables(bool startup)
+          if (!gbc_bios_palette)
+             find_internal_palette(&gbc_bios_palette, &isGbcPalette);
+          break;
+-      case GB_COLORIZATION_CUSTOM:
+-         load_custom_palette();
+-         break;
+       case GB_COLORIZATION_INTERNAL:
+          find_internal_palette(&gbc_bios_palette, &isGbcPalette);
+          break;

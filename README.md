@@ -21,6 +21,10 @@ That's it. You can [grab the latest version here](https://github.com/dedicated-o
 - auto-save on sleep, when switching games
 - auto-sleep in menus
 
+## Powering Off
+
+Before powering off with the physical switch press MENU once to open the menu, then press it again to sleep the device. Once the screen turns off it is safe to flip the physical switch.
+
 ## Date & Time
 
 Pressing `SELECT` in the menu brings up the datetime switcher.

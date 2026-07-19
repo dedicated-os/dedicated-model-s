@@ -1903,13 +1903,7 @@ static bool environment_callback(unsigned cmd, void *data) {
 				var->value = "enabled";
 			}
 			else if (strcmp(var->key, "gambatte_gb_colorization") == 0) {
-				var->value = "internal";
-			}
-			else if (strcmp(var->key, "gambatte_gb_internal_palette") == 0) {
-				var->value = "PixelShift - Pack 1";
-			}
-			else if (strcmp(var->key, "gambatte_gb_palette_pixelshift_1") == 0) {
-				var->value = "PixelShift 27 - GBP Bivert";
+				var->value = "custom";
 			}
 			
 			// gpsp
