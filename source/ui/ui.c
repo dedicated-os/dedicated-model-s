@@ -1908,7 +1908,9 @@ static bool environment_callback(unsigned cmd, void *data) {
 			
 			// gpsp
 			else if (strcmp(var->key, "gpsp_boot_mode") == 0) {
-				var->value = "bios"; // TODO: only if present
+				if (exists(BIOS_PATH "/gba_bios.bin")) {
+					var->value = "bios";
+				}
 			}
 			else if (strcmp(var->key, "gpsp_frameskip") == 0) {
 				has_frameskip = 1;

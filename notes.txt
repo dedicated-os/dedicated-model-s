@@ -2,12 +2,14 @@ CHANGELOG
 
 - revised volume and brightness ramps
 - swapped frame skip and fast forward icons (to match corresponding shoulder button placement)
+- original Game Boy games no longer use a bivert mod palette
+- added support for custom palettes (see bios/readme.txt)
+- only show official Game Boy Advance boot logo
 
 -----------------------------------------------
 
 TODO
 
-- revert gambatte to pokemini palette not bivert?
 - rewrite Powering Off section of README
 
 -----------------------------------------------
