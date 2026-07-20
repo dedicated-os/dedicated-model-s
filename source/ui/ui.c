@@ -2541,51 +2541,6 @@ static int App_sort(const void* a, const void* b) {
 	const Entry *j = (const Entry *)b;
 	return compareNatural(i->name, j->name);
 }
-
-static void App_empty(void) {
-	LOG("App_empty");
-	
-	UI_gradientFilled(overlay, 0xFF555555);
-	Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
-	Font_shadowText(overlay, font18, "No games found", 4, 4+18, WHITE_COLOR);
-	dirty_overlay();
-	enable_overlay();
-	
-	while(1) {
-		present_layers(VSYNC_WAIT);
-	}
-}
-
-static void App_set(int i) {
-	if (!app.count) App_empty();
-	
-	if (i>=app.count) i -= app.count;
-	if (i<0) i += app.count;
-	app.current = i;
-	
-	Entry* item = &app.items[app.current];
-	strcpy(settings.game, item->name);
-
-	sprintf(game.path, "%s/%s", item->hidden ? ARCHIVE_PATH : GAMES_PATH, settings.game);
-	
-	strcpy(game.name, settings.game);
-	char *dot = strrchr(game.name, '.');
-	if (dot && dot!=game.name) *dot = '\0';
-	
-	LOG("settings.game: %s", settings.game);
-}
-static int App_next(int start, int dir) {
-	int i = start;
-	int count = app.count;
-	for (int _=0; _<count; _++) {
-		i += dir;
-		if (i>=count) i -= count;
-		else if (i<0) i += count;
-		if (!app.items[i].hidden || i==app.current) return i;
-	}
-	return start;
-}
-
 static void App_getDisplayName(const char* in_name, char* out_name) {
 	char* tmp;
 	char work_name[MAX_FILE];
@@ -2777,6 +2732,76 @@ static void App_trunc(Font* font, const char* text, int max_width, char* out_tex
 	out_text[i] = '\0';
 }
 
+static int unsupported = 0;
+static char unsupported_file[MAX_FILE]; 
+static void App_empty(void) {
+	LOG("App_empty");
+	
+	UI_gradientFilled(overlay, 0xFF555555);
+	Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
+	Font_shadowText(overlay, font18, "No games found", 4, 4+18, WHITE_COLOR);
+	dirty_overlay();
+	enable_overlay();
+	
+	while(1) {
+		present_layers(VSYNC_WAIT);
+	}
+}
+
+static void App_unsupported(void) {
+	LOG("App_unsupported (%s)", unsupported_file);
+	
+	UI_gradientFilled(overlay, 0xFF555555);
+	Font_shadowText(overlay, font12, "Dedicated OS", 4,4, LIGHT_COLOR);
+	Font_shadowText(overlay, font18, "Detected one or", 4, 4+(18*1), WHITE_COLOR);
+	Font_shadowText(overlay, font18, "more unsupported", 4, 4+(18*2), WHITE_COLOR);
+	Font_shadowText(overlay, font18, "ROM type", 4, 4+(18*3), WHITE_COLOR);
+	
+	static char name[MAX_FILE]; 
+	App_trunc(font12, unsupported_file, SCREEN_WIDTH - 8, name);
+	Font_shadowText(overlay, font12, name, 4, 4+(18*5), LIGHT_COLOR);
+	
+	dirty_overlay();
+	enable_overlay();
+	
+	while(1) {
+		present_layers(VSYNC_WAIT);
+	}
+}
+
+static void App_set(int i) {
+	if (!app.count) {
+		if (unsupported) App_unsupported();
+		else App_empty();
+	}
+	
+	if (i>=app.count) i -= app.count;
+	if (i<0) i += app.count;
+	app.current = i;
+	
+	Entry* item = &app.items[app.current];
+	strcpy(settings.game, item->name);
+
+	sprintf(game.path, "%s/%s", item->hidden ? ARCHIVE_PATH : GAMES_PATH, settings.game);
+	
+	strcpy(game.name, settings.game);
+	char *dot = strrchr(game.name, '.');
+	if (dot && dot!=game.name) *dot = '\0';
+	
+	LOG("settings.game: %s", settings.game);
+}
+static int App_next(int start, int dir) {
+	int i = start;
+	int count = app.count;
+	for (int _=0; _<count; _++) {
+		i += dir;
+		if (i>=count) i -= count;
+		else if (i<0) i += count;
+		if (!app.items[i].hidden || i==app.current) return i;
+	}
+	return start;
+}
+
 static void App_selectCore(void) {
 	Console *console = Console_for(game.path);
 	if (!console) return;
@@ -2812,6 +2837,15 @@ static void App_init(void) {
 			while ((entry=readdir(dir))!=NULL) {
 				if (entry->d_name[0]=='.') continue;
 				if (entry->d_type==DT_DIR) continue;
+				
+				Console *console = Console_for(entry->d_name);
+				if (!console) {
+					if (!unsupported) {
+						unsupported = 1;
+						strcpy(unsupported_file, entry->d_name);
+					}
+					continue;
+				}
 			
 				if (app.count>=app.capacity) {
 					app.capacity *= 2;
